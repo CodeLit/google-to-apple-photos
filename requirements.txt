@@ -1,10 +1,14 @@
 # Python dependencies for Google to Apple Photos Metadata Synchronizer
 
-# Core dependencies - большинство библиотек входят в стандартную библиотеку Python 3.6+
+# Core dependencies - most libraries are included in the standard Python 3.6+ library
+# os, sys, logging, argparse, time, pathlib, json, csv, re, datetime, concurrent.futures, typing
 
-# Для хеширования изображений и сравнения
-Pillow>=9.0.0  # Для работы с изображениями
-imagehash>=4.3.0  # Для перцептивного хеширования изображений
+# For image processing and comparison
+Pillow>=9.0.0  # For working with images
+imagehash>=4.3.0  # For perceptual image hashing
 
-# Внешние зависимости
-# exiftool - должен быть установлен в системе
+# Optional but recommended for better performance
+tqdm>=4.62.0  # For progress bars
+
+# External dependencies
+# exiftool - must be installed on the system (not a Python package)
