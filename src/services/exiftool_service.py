@@ -33,13 +33,13 @@ class ExifToolService:
 	@staticmethod
 	def fix_file_extension(file_path: str) -> str:
 		"""
-		Исправляет расширение файла, если оно не соответствует реальному типу файла
+		Fixes the file extension if it doesn't match the actual file type
 		
 		Args:
-			file_path: Путь к файлу
+			file_path: Path to the file
 			
 		Returns:
-			Путь к файлу с правильным расширением (может быть тем же самым)
+			Path to the file with the correct extension (may be the same as input)
 		"""
 		if not os.path.exists(file_path):
 			logger.error(f"File not found: {file_path}")
@@ -50,47 +50,62 @@ class ExifToolService:
 			logger.debug(f"Could not determine real file type for {file_path}")
 			return file_path
 		
-		# Получаем текущее расширение файла
+		# Get the current file extension
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
 		
-		# Если расширение уже соответствует реальному типу файла
+		# Check special case for JPG/JPEG
+		if (real_ext.lower() == 'jpg' and file_ext.lower() == 'jpeg') or (real_ext.lower() == 'jpeg' and file_ext.lower() == 'jpg'):
+			# Don't fix extension for JPG/JPEG as they are essentially the same format
+			return file_path
+		
+		# If extension already matches the real file type
 		if real_ext.lower() == file_ext.lower():
 			return file_path
 		
-		# Карта корректировок для разных типов файлов
+		# Correction map for different file types
 		fix_map = {
-			# Фото
-			'jpg': ['heic', 'png', 'jpeg', 'jfif', 'webp'],  # JPEG файлы с неправильными расширениями
-			'png': ['jpg', 'jpeg', 'heic'],  # PNG файлы с неправильными расширениями
-			'heic': ['jpg', 'jpeg', 'png'],  # HEIC файлы с неправильными расширениями
-			# Видео
-			'mp4': ['mov', 'avi', '3gp'],  # MP4 файлы с неправильными расширениями
-			'mov': ['mp4', 'avi', '3gp'],  # MOV файлы с неправильными расширениями
+			# Photos
+			'jpg': ['heic', 'png', 'jfif', 'webp'],  # JPEG files with incorrect extensions
+			'png': ['heic'],  # PNG files with incorrect extensions
+			'heic': ['jpg', 'jpeg', 'png'],  # HEIC files with incorrect extensions
+			# Videos
+			'mp4': ['mov', 'avi', '3gp'],  # MP4 files with incorrect extensions
+			'mov': ['mp4', 'avi', '3gp'],  # MOV files with incorrect extensions
 		}
 		
-		# Проверяем, нужно ли исправлять расширение
+		# Check if we need to fix the extension
 		if real_ext in fix_map and file_ext in fix_map.get(real_ext, []):
-			# Создаем новое имя файла с правильным расширением
+			# Create a new filename with the correct extension
 			base_name = os.path.splitext(file_path)[0]
 			new_path = f"{base_name}.{real_ext}"
 			
-			# Проверяем, существует ли уже файл с таким именем
+			# Check if a file with this name already exists
 			if os.path.exists(new_path):
-				logger.warning(f"File with correct extension already exists: {new_path}")
-				# Если файл уже существует, возвращаем его путь
-				return new_path
+				# Check the size of the existing file
+				if os.path.getsize(new_path) > 0:
+					logger.info(f"Using existing file with correct extension: {new_path}")
+					# If the file already exists and is not empty, return its path
+					return new_path
+				else:
+					# If the file exists but is empty, delete it
+					try:
+						os.remove(new_path)
+						logger.info(f"Removed empty file with correct extension: {new_path}")
+					except Exception as e:
+						logger.error(f"Failed to remove empty file {new_path}: {str(e)}")
+						return file_path
 			
 			try:
-				# Создаем копию файла с правильным расширением
+				# Create a copy of the file with the correct extension
 				shutil.copy2(file_path, new_path)
 				logger.info(f"Copied {file_path} to {new_path} with correct extension ({file_ext} -> {real_ext})")
 				
-				# Проверяем, что копия создалась успешно и имеет правильный размер
+				# Check that the copy was created successfully and has the correct size
 				if os.path.exists(new_path) and os.path.getsize(new_path) > 0:
 					return new_path
 				else:
 					logger.error(f"Failed to create valid copy with correct extension: {new_path}")
-					# Удаляем неудачную копию
+					# Remove the failed copy
 					if os.path.exists(new_path):
 						try:
 							os.remove(new_path)
@@ -101,25 +116,25 @@ class ExifToolService:
 				logger.error(f"Error copying file {file_path} to {new_path}: {str(e)}")
 				return file_path
 		
-		# Если тип файла не требует исправления или не поддерживается
+		# If the file type doesn't need correction or is not supported
 		return file_path
 
 	@staticmethod
 	def detect_file_type(file_path: str) -> Tuple[str, str]:
 		"""
-		Определяет реальный тип файла, независимо от расширения
+		Detects the actual file type, regardless of extension
 		
 		Args:
-			file_path: Путь к файлу
+			file_path: Path to the file
 			
 		Returns:
-			Тюпл (реальное_расширение, mime_type)
+			Tuple (real_extension, mime_type)
 		"""
 		if not os.path.exists(file_path):
 			logger.error(f"File not found: {file_path}")
 			return '', ''
 		
-		# Расширенная карта MIME-типов
+		# Extended MIME-type map
 		ext_map = {
 			'image/jpeg': 'jpg',
 			'image/jpg': 'jpg',
@@ -136,33 +151,33 @@ class ExifToolService:
 		}
 		
 		try:
-			# Метод 1: Используем exiftool для определения типа файла
+			# Method 1: Use exiftool to determine file type
 			cmd = ['exiftool', '-FileType', '-s3', file_path]
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
 			
 			if result.returncode == 0 and result.stdout.strip():
 				real_ext = result.stdout.strip().lower()
 				
-				# Получаем MIME тип на основе реального расширения
+				# Get MIME type based on the real extension
 				mime_type = mimetypes.guess_type(f"file.{real_ext}")[0] or ''
 				
-				# Проверяем специальные случаи
+				# Check special cases
 				if real_ext.lower() == 'jpeg':
 					real_ext = 'jpg'
 				
 				return real_ext, mime_type
 			
-			# Метод 2: Если exiftool не смог определить тип, используем file command
+			# Method 2: If exiftool failed to determine the type, use file command
 			cmd = ['file', '--mime-type', '-b', file_path]
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
 			
 			if result.returncode == 0 and result.stdout.strip():
 				mime_type = result.stdout.strip()
 				
-				# Преобразуем MIME тип в расширение
+				# Convert MIME type to extension
 				real_ext = ext_map.get(mime_type, '')
 				
-				# Если не нашли в карте, попробуем извлечь из MIME типа
+				# If not found in the map, try to extract from MIME type
 				if not real_ext and '/' in mime_type:
 					potential_ext = mime_type.split('/')[-1]
 					if potential_ext in ['jpeg', 'jpg', 'png', 'gif', 'webp', 'heic', 'heif', 'mp4', 'mov', 'mpeg', 'avi']:
@@ -172,7 +187,7 @@ class ExifToolService:
 		except Exception as e:
 			logger.debug(f"Error detecting file type for {file_path}: {str(e)}")
 		
-		# Если не удалось определить тип, возвращаем расширение из имени файла
+		# If the type could not be determined, return the extension from the filename
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
 		return file_ext, mimetypes.guess_type(file_path)[0] or ''
 
@@ -192,45 +207,49 @@ class ExifToolService:
 		if not metadata_args:
 			return False
 		
-		# Определяем реальный тип файла, а не только расширение
+		# Determine the real file type, not just the extension
 		real_ext, mime_type = ExifToolService.detect_file_type(file_path)
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
 		
-		# Проверяем, если расширение не соответствует реальному типу файла
+		# Check if the extension doesn't match the actual file type
 		if real_ext and real_ext != file_ext:
-			logger.info(f"File {file_path} has extension '{file_ext}' but is actually a '{real_ext}' file")
-			
-			# Исправляем расширение файла для всех типов файлов с неправильным расширением
-			fixed_path = ExifToolService.fix_file_extension(file_path)
-			
-			# Если путь изменился (т.е. была создана копия с правильным расширением)
-			if fixed_path != file_path and os.path.exists(fixed_path):
-				logger.info(f"Using file with correct extension: {fixed_path}")
-				# Используем новый путь для дальнейшей обработки
-				file_path = fixed_path
-				# Обновляем расширение и тип файла для дальнейшей обработки
-				file_ext = os.path.splitext(fixed_path)[1][1:].lower()
-				real_ext = file_ext  # Теперь расширение соответствует реальному типу
+			# Skip jpg/jpeg cases as they are essentially the same format
+			if (real_ext.lower() == 'jpg' and file_ext.lower() == 'jpeg') or (real_ext.lower() == 'jpeg' and file_ext.lower() == 'jpg'):
+				pass  # Don't show warning or fix extension
+			else:
+				logger.info(f"File {file_path} has extension '{file_ext}' but is actually a '{real_ext}' file")
+				
+				# Fix file extension for all file types with incorrect extensions
+				fixed_path = ExifToolService.fix_file_extension(file_path)
+				
+				# If the path has changed (i.e., a copy with the correct extension was created)
+				if fixed_path != file_path and os.path.exists(fixed_path):
+					logger.info(f"Using file with correct extension: {fixed_path}")
+					# Use the new path for further processing
+					file_path = fixed_path
+					# Update the extension and file type for further processing
+					file_ext = os.path.splitext(fixed_path)[1][1:].lower()
+					real_ext = file_ext  # Now the extension matches the real type
 		
-		# Создаем копию аргументов для модификации в зависимости от типа файла
+		# Create a copy of arguments for modification depending on the file type
 		adjusted_args = metadata_args.copy()
 		
-		# Специальная обработка для разных типов файлов на основе реального типа
+		# Special handling for different file types based on the real type
 		if real_ext == 'jpg' or 'jpeg' in mime_type or file_ext.lower() == 'jpg':
-			# Для JPEG файлов (включая те, которые были переименованы)
-			# Для JPEG файлов используем стандартные аргументы
+			# For JPEG files (including those that were renamed)
+			# Use standard arguments for JPEG files
 			adjusted_args.append('-ignoreMinorErrors')
 		elif real_ext == 'heic' or 'heic' in mime_type:
-			# Для настоящих HEIC файлов используем более безопасный набор аргументов
-			# Убираем GPS координаты, которые часто вызывают проблемы
+			# For actual HEIC files, use a safer set of arguments
+			# Remove GPS coordinates which often cause problems
 			adjusted_args = [arg for arg in adjusted_args if not arg.startswith('-GPS')]
-			# Добавляем специальные флаги для HEIC файлов
+			# Add special flags for HEIC files
 			adjusted_args.append('-ignoreMinorErrors')
 		elif real_ext in ['png', 'gif'] or any(x in mime_type for x in ['png', 'gif']):
-			# Для PNG и GIF файлов оставляем только основные метаданные даты
+			# For PNG and GIF files, keep only the basic date metadata
 			adjusted_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
 		elif real_ext in ['mpg', 'avi', 'mp4', 'mov', 'wmv'] or any(x in mime_type for x in ['video', 'mpeg', 'quicktime']):
-			# Для видео файлов используем специальные флаги
+			# For video files, use special flags
 			adjusted_args.append('-ignoreMinorErrors')
 			adjusted_args.append('-use MWG')
 		
@@ -245,18 +264,18 @@ class ExifToolService:
 				logger.info(f"[DRY RUN] Would execute: {' '.join(cmd)}")
 				return True
 			
-			# Используем subprocess.run без check=True, чтобы обработать ошибки самостоятельно
+			# Use subprocess.run without check=True to handle errors ourselves
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			
 			if result.returncode == 0:
 				logger.info(f"Successfully updated metadata for {file_path}")
 				return True
 			else:
-				# Если первая попытка не удалась, попробуем только с датами
+				# If the first attempt failed, try with dates only
 				if result.returncode != 0 and not dry_run:
 					logger.warning(f"First attempt failed for {file_path}, trying with dates only")
 					
-					# Оставляем только аргументы с датами
+					# Keep only date-related arguments
 					date_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
 					
 					if date_args:
@@ -270,7 +289,7 @@ class ExifToolService:
 								logger.info(f"Successfully updated date metadata for {file_path}")
 								return True
 							else:
-								# Если и это не сработало, попробуем принудительно указать тип файла
+								# If that didn't work either, try to force the file type
 								if 'Not a valid HEIC' in result2.stderr.decode() and real_ext == 'jpg':
 									logger.warning(f"Trying to force JPEG format for {file_path}")
 									cmd = ['exiftool']

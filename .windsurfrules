@@ -1,41 +1,48 @@
 # .windsurfrules
 
-## Goal
+## Purpose
 
-Fix incorrect photo and video metadata (especially dates) in files exported from Apple Photos by using accurate metadata from Google Takeout JSON files.
+Correct inaccurate or missing photo and video metadata (especially creation dates) in files exported from Apple Photos by referencing accurate metadata from Google Takeout JSON files.
 
-## Folders
+## Folder Structure
 
-- ./old → contains original files exported from Google Takeout, with accompanying .json metadata files. Do not modify this folder
-- ./new → contains media files exported from Apple Photos Library ("Unmodified Originals"), some of which have incorrect or missing metadata
+- `./old` — Contains original media files exported from Google Takeout, each with an accompanying `.json` metadata file. This folder must remain untouched.
+- `./new` — Contains media files exported from Apple Photos Library ("Unmodified Originals"). These may have incorrect or missing metadata.
 
-## Rules
+## Processing Rules
 
-- For each .json file in ./old, extract the "photoTakenTime" field
-- Match .json with corresponding media file by filename (e.g. IMG_1234.jpg → IMG_1234.jpg)
-- If a match exists in ./new, apply the date metadata from the .json to the file in ./new
-- Use exiftool or a similar method to write the metadata fields:
-  - DateTimeOriginal
-  - CreateDate
-  - ModifyDate
-- Do not import/export any files manually — just prepare them
-- Goal is to have correct metadata in ./new so that it can be imported cleanly into Apple Photos
+1. For each `.json` file in `./old`, extract the `photoTakenTime` field.
+2. Match each `.json` file to its corresponding media file by name (e.g., `IMG_1234.json` → `IMG_1234.jpg`).
+3. If a matching media file exists in `./new`, update its metadata using the values from the `.json` file.
+4. Use `exiftool` or a similar tool to set the following fields:
+   - `DateTimeOriginal` (when the photo was taken)
+   - `CreateDate` (when the file was created)
+   - `ModifyDate` (last modified timestamp)
+5. Do not manually move, copy, or rename any files. This script only modifies metadata in-place within `./new`.
 
-## Final Step
+## Additional Metadata (optional if available)
 
-User will re-import the corrected files from ./new into Apple Photos manually
+- `Title`
+- GPS coordinates (`latitude`, `longitude`)
 
-Python runs with pyton3 command. Use pip3 to install dependencies.
+## Output and Logging
 
-## Important (if presented) and also in json files:
+- Display only essential progress, statistics, and total files processed.
+- Print detailed errors only when necessary for debugging.
+- Avoid verbose or repeated console logs.
 
-DateTimeOriginal (дата и время создания фото)
-CreateDate (дата создания файла)
-ModifyDate (дата изменения файла)
-Title (название файла)
-GPS координаты
-Остальные поля
+## Python Environment
 
+- Use `python3` to run the script.
+- Use `pip3` to install any required dependencies.
 
-## Code style
-Check is everything okay with code. Use latest Python practices. Dont repeat code. Keep it simple.
+## Code Style Guidelines
+
+- Follow modern Python best practices.
+- Avoid code duplication.
+- Keep logic clean, readable, and minimal.
+- Validate behavior and structure before execution.
+
+## Final Step (Manual)
+
+After running the script, the user will manually re-import the corrected files from `./new` into the Apple Photos Library.
