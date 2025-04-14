@@ -1,0 +1,27 @@
+# .windsurfrules
+
+## Goal
+
+Fix incorrect photo and video metadata (especially dates) in files exported from Apple Photos by using accurate metadata from Google Takeout JSON files.
+
+## Folders
+
+- ./old → contains original files exported from Google Takeout, with accompanying .json metadata files
+- ./new → contains media files exported from Apple Photos Library ("Unmodified Originals"), some of which have incorrect or missing metadata
+- ./archive → contains old library for backup purposes
+
+## Rules
+
+- For each .json file in ./old, extract the "photoTakenTime" field
+- Match .json with corresponding media file by filename (e.g. IMG_1234.jpg → IMG_1234.jpg)
+- If a match exists in ./new, apply the date metadata from the .json to the file in ./new
+- Use exiftool or a similar method to write the metadata fields:
+  - DateTimeOriginal
+  - CreateDate
+  - ModifyDate
+- Do not import/export any files manually — just prepare them
+- Goal is to have correct metadata in ./new so that it can be imported cleanly into Apple Photos
+
+## Final Step
+
+User will re-import the corrected files from ./new into Apple Photos manually
