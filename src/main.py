@@ -251,10 +251,24 @@ def main():
 			if ExifToolService.apply_metadata(new_file, exif_args, args.dry_run):
 				success_count += 1
 			else:
-				failure_count += 1
-				# Log the failed update with a more specific error message
-				error_message = "Failed to apply complete metadata - partial or no metadata was applied"
-				MetadataService.log_failed_update(new_file, error_message)
+				# Try specialized handling for problematic file types
+				file_ext = os.path.splitext(new_file)[1].lower()
+				# Check if this is a problematic file type (MPG, AVI, PNG, AAE)
+				if file_ext.lower() in ['.mpg', '.mpeg', '.avi', '.png', '.aae']:
+					logger.info(f"Attempting specialized metadata handling for {new_file}")
+					if not args.dry_run and ExifToolService.apply_specialized_metadata_for_problematic_files(new_file):
+						logger.info(f"Successfully applied specialized metadata to {new_file}")
+						success_count += 1
+					else:
+						failure_count += 1
+						# Log the failed update with a specific error message
+						error_message = f"Failed to apply metadata even with specialized handling for {file_ext} file"
+						MetadataService.log_failed_update(new_file, error_message)
+				else:
+					failure_count += 1
+					# Log the failed update with a more specific error message
+					error_message = "Failed to apply complete metadata - partial or no metadata was applied"
+					MetadataService.log_failed_update(new_file, error_message)
 				
 		except KeyboardInterrupt:
 			logger.warning("Process interrupted by user")

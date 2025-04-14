@@ -248,8 +248,29 @@ class ExifToolService:
 		elif real_ext in ['png', 'gif'] or any(x in mime_type for x in ['png', 'gif']):
 			# For PNG and GIF files, keep only the basic date metadata
 			adjusted_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
-		elif real_ext in ['mpg', 'avi', 'mp4', 'mov', 'wmv'] or any(x in mime_type for x in ['video', 'mpeg', 'quicktime']):
-			# For video files, use special flags
+			# Add additional flags for PNG files
+			adjusted_args.append('-ignoreMinorErrors')
+			adjusted_args.append('-overwrite_original_in_place')
+		elif real_ext.lower() in ['mpg', 'mpeg'] or 'mpeg' in mime_type:
+			# Special handling for MPG files which are particularly problematic
+			# Keep only date metadata and add special flags
+			adjusted_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
+			adjusted_args.append('-ignoreMinorErrors')
+			adjusted_args.append('-m')
+			adjusted_args.append('-overwrite_original_in_place')
+		elif real_ext.lower() in ['avi'] or 'avi' in mime_type:
+			# Special handling for AVI files
+			# Keep only date metadata and add special flags
+			adjusted_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
+			adjusted_args.append('-ignoreMinorErrors')
+			adjusted_args.append('-m')
+			adjusted_args.append('-overwrite_original_in_place')
+		elif real_ext.lower() in ['aae'] or file_ext.lower() == 'aae':
+			# For AAE files (Apple edit information), only update basic metadata
+			adjusted_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
+			adjusted_args.append('-ignoreMinorErrors')
+		elif real_ext in ['mp4', 'mov', 'wmv'] or any(x in mime_type for x in ['video', 'quicktime']):
+			# For other video files, use special flags
 			adjusted_args.append('-ignoreMinorErrors')
 			adjusted_args.append('-use MWG')
 		
@@ -265,7 +286,24 @@ class ExifToolService:
 				return True
 			
 			# Use subprocess.run without check=True to handle errors ourselves
-			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			try:
+				result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+			except subprocess.TimeoutExpired:
+				logger.warning(f"Command timed out for {file_path}, trying with simplified arguments")
+				# If timeout occurs, try with only date metadata
+				date_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
+				if date_args:
+					cmd = ['exiftool']
+					cmd.extend(date_args)
+					cmd.extend(['-ignoreMinorErrors', '-m', '-overwrite_original', file_path])
+					try:
+						result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+					except Exception:
+						logger.error(f"Failed to update metadata for {file_path} after timeout")
+						return False
+				else:
+					logger.error(f"Failed to update metadata for {file_path} after timeout")
+					return False
 			
 			if result.returncode == 0:
 				logger.info(f"Successfully updated metadata for {file_path}")
@@ -284,7 +322,11 @@ class ExifToolService:
 						cmd.extend(['-ignoreMinorErrors', '-overwrite_original', file_path])
 						
 						try:
-							result2 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+							try:
+								result2 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+							except subprocess.TimeoutExpired:
+								logger.error(f"Second attempt timed out for {file_path}")
+								return False
 							if result2.returncode == 0:
 								logger.info(f"Partially updated date metadata for {file_path}, but full metadata update failed")
 								# Return False because we only applied partial metadata
@@ -298,7 +340,11 @@ class ExifToolService:
 									cmd.extend(['-FileType=JPEG', '-ignoreMinorErrors', '-overwrite_original', file_path])
 									
 									try:
-										result3 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+										try:
+											result3 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+										except subprocess.TimeoutExpired:
+											logger.error(f"Third attempt timed out for {file_path}")
+											return False
 										if result3.returncode == 0:
 											logger.info(f"Partially updated metadata with forced JPEG format for {file_path}, but full metadata update failed")
 											# Return False because we only applied partial metadata
@@ -318,6 +364,77 @@ class ExifToolService:
 			logger.error(f"Error applying metadata to {file_path}: {str(e)}")
 			return False
 	
+	@staticmethod
+	def apply_specialized_metadata_for_problematic_files(file_path: str) -> bool:
+		"""
+		Apply specialized metadata handling for problematic file types (MPG, AVI, etc.)
+		This is a last-resort method for files that failed normal metadata application
+		
+		Args:
+			file_path: Path to the file
+			
+		Returns:
+			True if successful, False otherwise
+		"""
+		try:
+			# Get file extension
+			file_ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+			
+			# Determine file creation time from filesystem
+			try:
+				creation_time = os.path.getctime(file_path)
+				modification_time = os.path.getmtime(file_path)
+				
+				# Format dates for exiftool
+				from datetime import datetime
+				date_format = "%Y:%m:%d %H:%M:%S"
+				creation_date = datetime.fromtimestamp(creation_time).strftime(date_format)
+				modify_date = datetime.fromtimestamp(modification_time).strftime(date_format)
+			except Exception as e:
+				logger.warning(f"Could not get file times for {file_path}: {str(e)}")
+				return False
+			
+			# Create basic command with only date metadata
+			cmd = [
+				'exiftool',
+				f'-CreateDate={creation_date}',
+				f'-ModifyDate={modify_date}',
+				f'-DateTimeOriginal={creation_date}',
+				'-ignoreMinorErrors',
+				'-m',  # Ignore minor errors and warnings
+				'-overwrite_original',
+				file_path
+			]
+			
+			# Special handling for specific file types
+			if file_ext in ['mpg', 'mpeg']:
+				# For MPG files, use a more direct approach
+				cmd.insert(1, '-P')  # Preserve file modification date
+				cmd.insert(1, '-F')  # Force writing even if tags already exist
+			elif file_ext in ['avi']:
+				# For AVI files
+				cmd.insert(1, '-F')  # Force writing
+			elif file_ext in ['png']:
+				# For PNG files
+				cmd.insert(1, '-F')  # Force writing
+			
+			# Execute command with timeout
+			try:
+				result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+				if result.returncode == 0:
+					logger.info(f"Successfully applied specialized metadata to {file_path}")
+					return True
+				else:
+					logger.error(f"Failed to apply specialized metadata to {file_path}: {result.stderr}")
+					return False
+			except subprocess.TimeoutExpired:
+				logger.error(f"Specialized metadata command timed out for {file_path}")
+				return False
+			
+		except Exception as e:
+			logger.error(f"Error in specialized metadata handling for {file_path}: {str(e)}")
+			return False
+		
 	@staticmethod
 	def get_metadata(file_path: str) -> Optional[dict]:
 		"""
