@@ -9,8 +9,14 @@ import argparse
 import time
 from pathlib import Path
 
-from src.services.exiftool_service import ExifToolService
-from src.services.metadata_service import MetadataService
+import sys
+import os
+
+# Add the parent directory to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from services.exiftool_service import ExifToolService
+from services.metadata_service import MetadataService
 
 
 # Configure logging
@@ -41,6 +47,12 @@ def main():
 	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
 	parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicate files in the new directory based on duplicates.log')
 	parser.add_argument('--duplicates-log', default='duplicates.log', help='Log file for duplicates (default: duplicates.log)')
+	parser.add_argument('--rename-files', action='store_true', help='Rename files by removing "(1)" from filenames')
+	parser.add_argument('--rename-suffix', default=' (1)', help='Suffix to remove from filenames (default: " (1)")')
+	parser.add_argument('--find-duplicates-by-name', action='store_true', help='Find duplicates by checking for files with the same base name but with "(1)" suffix')
+	parser.add_argument('--name-duplicates-log', default='name_duplicates.log', help='Log file for name-based duplicates (default: name_duplicates.log)')
+	parser.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
+	parser.add_argument('--status-log', default='metadata_status.log', help='Log file for metadata status (default: metadata_status.log)')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -95,7 +107,7 @@ def main():
 				rel_path = os.path.relpath(source_path, old_dir)
 				
 				# Skip if the file is in a subdirectory that's not a media file
-				from src.utils.image_utils import is_media_file
+				from utils.image_utils import is_media_file
 				if not is_media_file(source_path):
 					continue
 				
@@ -123,7 +135,7 @@ def main():
 	
 	# Remove duplicates if requested
 	if args.remove_duplicates:
-		from src.utils.image_utils import remove_duplicates
+		from utils.image_utils import remove_duplicates
 		logger.info(f"Removing duplicates based on {args.duplicates_log}...")
 		
 		# Check if the duplicates log exists
@@ -143,9 +155,57 @@ def main():
 		
 		return 0
 	
+	# Rename files if requested
+	if args.rename_files:
+		from utils.image_utils import rename_files_remove_suffix
+		logger.info(f"Renaming files by removing '{args.rename_suffix}' from filenames in {new_dir}...")
+		
+		# Rename files
+		processed, renamed = rename_files_remove_suffix(new_dir, args.rename_suffix, args.dry_run)
+		
+		# Print summary
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would rename {renamed} of {processed} files")
+		else:
+			logger.info(f"Renamed {renamed} of {processed} files")
+		
+		return 0
+	
+	# Check metadata status if requested
+	if args.check_metadata:
+		from utils.image_utils import check_metadata_status
+		logger.info(f"Checking metadata status for files in {new_dir}...")
+		
+		# Check metadata status
+		total, with_metadata, without_metadata = check_metadata_status(old_dir, new_dir, args.status_log)
+		
+		# Print summary
+		logger.info(f"Total files in {new_dir}: {total}")
+		logger.info(f"Files with metadata available: {with_metadata} ({with_metadata/total*100:.1f}%)")
+		logger.info(f"Files without metadata: {without_metadata} ({without_metadata/total*100:.1f}%)")
+		logger.info(f"Detailed status written to {args.status_log}")
+		
+		return 0
+	
+	# Find duplicates by name if requested
+	if args.find_duplicates_by_name:
+		from utils.image_utils import find_duplicates_by_name
+		logger.info(f"Finding duplicates by name in {new_dir}...")
+		
+		# Find and optionally remove duplicates by name
+		found, removed = find_duplicates_by_name(new_dir, args.rename_suffix, args.dry_run, args.name_duplicates_log)
+		
+		# Print summary
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would remove {found} duplicate files")
+		else:
+			logger.info(f"Removed {removed} of {found} duplicate files")
+		
+		return 0
+	
 	# Find duplicates only if requested
 	if args.find_duplicates_only:
-		from src.utils.image_utils import find_duplicates
+		from utils.image_utils import find_duplicates
 		logger.info(f"Finding duplicates in {new_dir}...")
 		duplicates = find_duplicates(new_dir, args.similarity)
 		if duplicates:

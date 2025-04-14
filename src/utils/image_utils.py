@@ -154,6 +154,175 @@ def hash_similarity(hash1: str, hash2: str) -> float:
 		# Return a binary similarity (1.0 if equal, 0.0 if different)
 		return 1.0 if hash1 == hash2 else 0.0
 
+def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'metadata_status.log') -> Tuple[int, int, int]:
+	"""
+	Check which files in the new directory need metadata updates from the old directory
+	
+	Args:
+		old_dir: Directory with Google Takeout files
+		new_dir: Directory with Apple Photos exports
+		status_log: Path to the log file to write the results to
+		
+	Returns:
+		Tuple of (total files in new, files with metadata in old, files without metadata in old)
+	"""
+	logger.info(f"Checking metadata status for files in {new_dir}...")
+	
+	# Get all media files in the new directory
+	new_files = []
+	for root, _, files in os.walk(new_dir):
+		for filename in files:
+			file_path = os.path.join(root, filename)
+			if is_media_file(file_path):
+				new_files.append(file_path)
+	
+	logger.info(f"Found {len(new_files)} media files in {new_dir}")
+	
+	# Pre-index all JSON files in the old directory
+	logger.info(f"Indexing JSON files in {old_dir}...")
+	json_files_map = {}
+	json_count = 0
+	
+	for root, _, files in os.walk(old_dir):
+		for filename in files:
+			if filename.endswith('.json'):
+				json_path = os.path.join(root, filename)
+				json_count += 1
+				
+				# Store the JSON file path with the base filename as key
+				# Remove the .supplemental-metadata.json suffix if present
+				base_name = filename
+				if '.supplemental-metadata.json' in filename:
+					base_name = filename.replace('.supplemental-metadata.json', '')
+				elif '.json' in filename:
+					base_name = filename.replace('.json', '')
+				
+				# Add to map with both the full name and potential base name
+				json_files_map[filename] = json_path
+				json_files_map[base_name] = json_path
+	
+	logger.info(f"Indexed {json_count} JSON files from {old_dir}")
+	
+	# Find corresponding JSON files in the old directory
+	files_with_metadata = []
+	files_without_metadata = []
+	
+	for new_file in new_files:
+		new_filename = os.path.basename(new_file)
+		json_found = False
+		
+		# Check if we have a matching JSON file
+		potential_matches = [
+			new_filename + '.supplemental-metadata.json',
+			new_filename + '.json',
+			new_filename
+		]
+		
+		for match in potential_matches:
+			if match in json_files_map:
+				json_path = json_files_map[match]
+				
+				# Check if the JSON file contains photoTakenTime
+				try:
+					import json
+					with open(json_path, 'r', encoding='utf-8') as f:
+						metadata = json.load(f)
+						if 'photoTakenTime' in metadata:
+							files_with_metadata.append((new_file, json_path))
+							json_found = True
+							break
+				except Exception as e:
+					logger.error(f"Error reading JSON file {json_path}: {str(e)}")
+					continue
+		
+		if not json_found:
+			files_without_metadata.append(new_file)
+	
+	logger.info(f"Found metadata for {len(files_with_metadata)} files")
+	logger.info(f"Missing metadata for {len(files_without_metadata)} files")
+	
+	# Write to log file
+	with open(status_log, 'w', encoding='utf-8') as f:
+		f.write("# Files with metadata available\n")
+		f.write("new_file,json_file\n")
+		for new_file, json_path in files_with_metadata:
+			f.write(f"{new_file},{json_path}\n")
+		
+		f.write("\n# Files without metadata\n")
+		for new_file in files_without_metadata:
+			f.write(f"{new_file}\n")
+	
+	logger.info(f"Metadata status written to {status_log}")
+	return len(new_files), len(files_with_metadata), len(files_without_metadata)
+
+
+def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'name_duplicates.log') -> Tuple[int, int]:
+	"""
+	Find duplicates by checking for files with the same base name but with a suffix,
+	and optionally remove the duplicates with the suffix
+	
+	Args:
+		directory: Directory containing files to check
+		suffix: Suffix to look for (default: ' (1)')
+		dry_run: If True, only print what would be done without actually removing files
+		duplicates_log: Path to the log file to write the results to
+		
+	Returns:
+		Tuple of (number of duplicates found, number of duplicates removed)
+	"""
+	logger.info(f"Finding duplicates by name in {directory}...")
+	
+	# Find potential duplicates
+	potential_duplicates = find_potential_duplicates(directory, suffix)
+	
+	if not potential_duplicates:
+		logger.info("No potential duplicates found")
+		return 0, 0
+	
+	logger.info(f"Found {len(potential_duplicates)} potential duplicate pairs")
+	
+	# Compare file sizes to confirm they are duplicates
+	confirmed_duplicates = {}
+	for original, duplicate in potential_duplicates.items():
+		# Get file sizes
+		orig_size = os.path.getsize(original)
+		dup_size = os.path.getsize(duplicate)
+		
+		# If file sizes match, they are likely duplicates
+		if orig_size == dup_size:
+			confirmed_duplicates[original] = duplicate
+	
+	logger.info(f"Confirmed {len(confirmed_duplicates)} duplicate pairs by file size")
+	
+	# Write to log file
+	with open(duplicates_log, 'w') as f:
+		f.write("original_file,duplicate_file\n")
+		for original, duplicate in confirmed_duplicates.items():
+			f.write(f"{original},{duplicate}\n")
+	
+	logger.info(f"Duplicate information written to {duplicates_log}")
+	
+	# Remove duplicates if not in dry run mode
+	removed = 0
+	if not dry_run:
+		for _, duplicate in confirmed_duplicates.items():
+			try:
+				os.remove(duplicate)
+				logger.debug(f"Removed duplicate: {duplicate}")
+				removed += 1
+				
+				# Log progress every 100 files
+				if removed % 100 == 0:
+					logger.info(f"Removed {removed} duplicates so far")
+			except Exception as e:
+				logger.error(f"Error removing {duplicate}: {str(e)}")
+		logger.info(f"Removed {removed} duplicate files")
+	else:
+		logger.info(f"[DRY RUN] Would remove {len(confirmed_duplicates)} duplicate files")
+	
+	return len(confirmed_duplicates), removed
+
+
 def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log') -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
@@ -272,6 +441,97 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicat
 
 # Cache for file hashes to avoid recomputing
 _file_hash_cache = {}
+
+def find_potential_duplicates(directory: str, suffix: str = ' (1)') -> Dict[str, str]:
+	"""
+	Find potential duplicates by checking for files with the same base name but with a suffix
+	
+	Args:
+		directory: Directory containing files to check
+		suffix: Suffix to look for (default: ' (1)')
+		
+	Returns:
+		Dictionary mapping original files to potential duplicates
+	"""
+	if not os.path.exists(directory):
+		logger.error(f"Directory not found: {directory}")
+		return {}
+	
+	# Get all files in the directory
+	all_files = []
+	for root, _, files in os.walk(directory):
+		for filename in files:
+			all_files.append(os.path.join(root, filename))
+	
+	# Create a lookup dictionary for faster searching
+	file_lookup = {os.path.basename(f): f for f in all_files}
+	
+	# Find potential duplicates
+	potential_duplicates = {}
+	for filename, file_path in file_lookup.items():
+		if suffix in filename:
+			continue  # Skip files that already have the suffix
+		
+		# Check if there's a file with the same name + suffix
+		dup_filename = filename.split('.')[0] + suffix + '.' + filename.split('.')[-1]
+		if dup_filename in file_lookup:
+			potential_duplicates[file_path] = file_lookup[dup_filename]
+	
+	logger.info(f"Found {len(potential_duplicates)} potential duplicate pairs")
+	return potential_duplicates
+
+
+def rename_files_remove_suffix(directory: str, suffix: str = ' (1)', dry_run: bool = False) -> Tuple[int, int]:
+	"""
+	Rename files in directory by removing a specific suffix from filenames
+	
+	Args:
+		directory: Directory containing files to rename
+		suffix: Suffix to remove from filenames (default: ' (1)')
+		dry_run: If True, only print what would be done without actually renaming files
+		
+	Returns:
+		Tuple of (number of files processed, number of files renamed)
+	"""
+	if not os.path.exists(directory):
+		logger.error(f"Directory not found: {directory}")
+		return 0, 0
+	
+	processed = 0
+	renamed = 0
+	
+	logger.info(f"Scanning for files with suffix '{suffix}' in {directory}")
+	
+	for root, _, files in os.walk(directory):
+		for filename in files:
+			if suffix in filename:
+				old_path = os.path.join(root, filename)
+				new_filename = filename.replace(suffix, '')
+				new_path = os.path.join(root, new_filename)
+				
+				processed += 1
+				
+				# Check if the destination file already exists
+				if os.path.exists(new_path):
+					logger.warning(f"Cannot rename {filename} to {new_filename} - destination file already exists")
+					continue
+				
+				if dry_run:
+					logger.info(f"[DRY RUN] Would rename: {filename} -> {new_filename}")
+				else:
+					try:
+						os.rename(old_path, new_path)
+						logger.debug(f"Renamed: {filename} -> {new_filename}")
+						renamed += 1
+						
+						# Log progress every 100 files
+						if renamed % 100 == 0:
+							logger.info(f"Renamed {renamed} files so far")
+					except Exception as e:
+						logger.error(f"Error renaming {filename}: {str(e)}")
+	
+	logger.info(f"Renaming complete. Processed {processed} files, renamed {renamed} files")
+	return processed, renamed
 
 def remove_duplicates(duplicates_log_path: str, dry_run: bool = False) -> Tuple[int, int]:
 	"""
