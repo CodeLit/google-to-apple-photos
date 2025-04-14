@@ -286,8 +286,9 @@ class ExifToolService:
 						try:
 							result2 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 							if result2.returncode == 0:
-								logger.info(f"Successfully updated date metadata for {file_path}")
-								return True
+								logger.info(f"Partially updated date metadata for {file_path}, but full metadata update failed")
+								# Return False because we only applied partial metadata
+								return False
 							else:
 								# If that didn't work either, try to force the file type
 								if 'Not a valid HEIC' in result2.stderr.decode() and real_ext == 'jpg':
@@ -299,8 +300,9 @@ class ExifToolService:
 									try:
 										result3 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 										if result3.returncode == 0:
-											logger.info(f"Successfully updated metadata with forced JPEG format for {file_path}")
-											return True
+											logger.info(f"Partially updated metadata with forced JPEG format for {file_path}, but full metadata update failed")
+											# Return False because we only applied partial metadata
+											return False
 										else:
 											logger.error(f"Failed to update metadata even with forced JPEG format for {file_path}: {result3.stderr.decode()}")
 									except Exception as e3:

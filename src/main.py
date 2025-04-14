@@ -252,8 +252,8 @@ def main():
 				success_count += 1
 			else:
 				failure_count += 1
-				# Log the failed update
-				error_message = "Failed to update metadata"
+				# Log the failed update with a more specific error message
+				error_message = "Failed to apply complete metadata - partial or no metadata was applied"
 				MetadataService.log_failed_update(new_file, error_message)
 				
 		except KeyboardInterrupt:
