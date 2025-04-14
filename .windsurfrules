@@ -35,3 +35,7 @@ ModifyDate (дата изменения файла)
 Title (название файла)
 GPS координаты
 Остальные поля
+
+
+## Code style
+Check is everything okay with code. Use latest Python practices. Dont repeat code. Keep it simple.
