@@ -4,6 +4,7 @@ Utility functions for image processing, hashing and duplicate detection
 import os
 import logging
 import hashlib
+import concurrent.futures
 from typing import Dict, List, Tuple, Set, Optional
 from pathlib import Path
 
@@ -269,8 +270,12 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98) -> Dict[
 	logger.info(f"Found {sum(len(dups) for dups in duplicates.values())} duplicate files in {len(duplicates)} groups")
 	return duplicates
 
+# Cache for file hashes to avoid recomputing
+_file_hash_cache = {}
+
 def find_matching_file_by_hash(source_file: str, target_dir: str, 
-						  similarity_threshold: float = 0.98) -> Optional[str]:
+						  similarity_threshold: float = 0.98, 
+						  file_list: Optional[List[str]] = None) -> Optional[str]:
 	"""
 	Find a matching file in target_dir based on hash similarity.
 	If imagehash is available, uses perceptual hash for images.
@@ -280,32 +285,86 @@ def find_matching_file_by_hash(source_file: str, target_dir: str,
 		source_file: Source file to match
 		target_dir: Directory to search for matches
 		similarity_threshold: Threshold for considering files as matches (0.0 to 1.0)
+		file_list: Optional pre-populated list of files to search through
 		
 	Returns:
 		Path to the matching file or None if not found
 	"""
-	if not os.path.exists(source_file) or not os.path.isdir(target_dir):
+	if not os.path.exists(source_file):
 		return None
-		
+	
+	# Try exact filename match first (fastest)
+	source_basename = os.path.basename(source_file)
+	source_name, source_ext = os.path.splitext(source_basename)
+	
+	# Check if there's an exact match by filename
+	if file_list is not None:
+		for target_file in file_list:
+			target_basename = os.path.basename(target_file)
+			if target_basename == source_basename:
+				return target_file
+			
+			# Try matching without extension (e.g., IMG_1234.jpg vs IMG_1234.jpeg)
+			target_name, _ = os.path.splitext(target_basename)
+			if target_name == source_name:
+				return target_file
+	
 	# Compute hash for source file
-	source_hash = compute_hash_for_file(source_file)
+	if source_file in _file_hash_cache:
+		source_hash = _file_hash_cache[source_file]
+	else:
+		source_hash = compute_hash_for_file(source_file)
+		_file_hash_cache[source_file] = source_hash
+	
 	if not source_hash:
 		return None
 		
 	best_match = None
 	best_similarity = 0.0
 	
-	# Check all files in target directory
-	for root, _, files in os.walk(target_dir):
-		for file in files:
-			target_file = os.path.join(root, file)
-			if is_media_file(target_file):
-				target_hash = compute_hash_for_file(target_file)
+	# Use provided file list or scan directory
+	target_files = file_list if file_list is not None else []
+	if not target_files and os.path.isdir(target_dir):
+		for root, _, files in os.walk(target_dir):
+			for file in files:
+				target_file = os.path.join(root, file)
+				if is_media_file(target_file):
+					target_files.append(target_file)
+	
+	# Process files in batches for better performance
+	batch_size = 100
+	for i in range(0, len(target_files), batch_size):
+		batch = target_files[i:i+batch_size]
+		
+		# Process batch in parallel
+		with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+			hash_futures = {}
+			for target_file in batch:
+				if target_file not in _file_hash_cache:
+					hash_futures[executor.submit(compute_hash_for_file, target_file)] = target_file
+			
+			for future in concurrent.futures.as_completed(hash_futures):
+				target_file = hash_futures[future]
+				try:
+					target_hash = future.result()
+					_file_hash_cache[target_file] = target_hash
+				except Exception as e:
+					logger.debug(f"Error computing hash for {target_file}: {str(e)}")
+					continue
+		
+		# Compare hashes
+		for target_file in batch:
+			if target_file in _file_hash_cache:
+				target_hash = _file_hash_cache[target_file]
 				if target_hash:
 					similarity = hash_similarity(source_hash, target_hash)
 					if similarity >= similarity_threshold and similarity > best_similarity:
 						best_match = target_file
 						best_similarity = similarity
+						
+						# If we have an exact match, no need to continue
+						if similarity >= 0.99:
+							break
 	
 	if best_match:
 		logger.debug(f"Found match for {source_file} -> {best_match} (similarity: {best_similarity:.2f})")

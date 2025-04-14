@@ -5,12 +5,14 @@ import os
 import json
 import logging
 import csv
+import re
+import concurrent.futures
 from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 
 from src.models.metadata import PhotoMetadata
 from src.utils.file_utils import get_base_filename, find_matching_file
-from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates
+from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
 
 logger = logging.getLogger(__name__)
 
@@ -88,12 +90,54 @@ class MetadataService:
 		hash_match_count = 0
 		name_match_count = 0
 		
-		# First, cache all files in the new directory for faster lookups
+		# Create optimized data structures for faster matching
 		logger.info(f"Caching files in {new_dir} for faster matching...")
-		new_files = []
+		new_files_dict = {}  # For name-based matching
+		new_files_list = []  # For hash-based matching
+		
 		try:
-			new_files = os.listdir(new_dir)
-			logger.info(f"Found {len(new_files)} files in the new directory")
+			# Walk through the new directory once and build both data structures
+			for root, _, files in os.walk(new_dir):
+				for file in files:
+					file_path = os.path.join(root, file)
+					if is_media_file(file_path):
+						# Add to list for hash matching
+						new_files_list.append(file_path)
+						
+						# Add to dictionary for name matching
+						base_name = os.path.splitext(file)[0].lower()
+						new_files_dict[base_name] = file_path
+						
+						# Also add with (1), (2) etc. removed for better matching
+						import re
+						clean_name = re.sub(r'\s*\(\d+\)$', '', base_name)
+						if clean_name != base_name:
+							new_files_dict[clean_name] = file_path
+			
+			logger.info(f"Found {len(new_files_list)} media files in the new directory")
+			
+			# Precompute hashes for all files in the new directory if using hash matching
+			if use_hash_matching:
+				logger.info("Precomputing hashes for files in the new directory...")
+				batch_size = 500
+				for i in range(0, len(new_files_list), batch_size):
+					batch = new_files_list[i:i+batch_size]
+					
+					# Process batch in parallel
+					with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+						hash_futures = {}
+						for target_file in batch:
+							hash_futures[executor.submit(compute_hash_for_file, target_file)] = target_file
+						
+						for future in concurrent.futures.as_completed(hash_futures):
+							try:
+								future.result()  # Just compute and cache the hash
+							except Exception:
+								pass
+					
+					if (i + batch_size) % 2000 == 0 or (i + batch_size) >= len(new_files_list):
+						logger.info(f"Precomputed hashes for {min(i + batch_size, len(new_files_list))} of {len(new_files_list)} files")
+		
 		except (PermissionError, FileNotFoundError) as e:
 			logger.error(f"Error accessing directory {new_dir}: {str(e)}")
 			return pairs
@@ -152,9 +196,16 @@ class MetadataService:
 						similarity = 0.0
 						match_method = 'none'
 						
-						# First try hash matching if enabled and we have the media file
-						if use_hash_matching and media_file:
-							matching_file = find_matching_file_by_hash(media_file, new_dir, similarity_threshold)
+						# First try name matching (fastest)
+						base_name_lower = base_name.lower()
+						if base_name_lower in new_files_dict:
+							matching_file = new_files_dict[base_name_lower]
+							name_match_count += 1
+							match_method = 'name'
+							similarity = 1.0
+						# Then try hash matching if enabled and we have the media file
+						elif use_hash_matching and media_file:
+							matching_file = find_matching_file_by_hash(media_file, new_dir, similarity_threshold, new_files_list)
 							if matching_file:
 								hash_match_count += 1
 								match_method = 'hash'
