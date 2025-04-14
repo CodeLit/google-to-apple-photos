@@ -21,6 +21,11 @@ processed_logger = logging.getLogger('processed_files')
 processed_logger.setLevel(logging.INFO)
 processed_logger.propagate = False  # Don't propagate to parent loggers
 
+# Create a separate logger for failed updates
+failed_updates_logger = logging.getLogger('failed_updates')
+failed_updates_logger.setLevel(logging.INFO)
+failed_updates_logger.propagate = False  # Don't propagate to parent loggers
+
 
 class MetadataService:
 	"""Service for handling metadata operations"""
@@ -46,8 +51,9 @@ class MetadataService:
 			return None
 	
 	@staticmethod
-	def setup_processed_files_logger(log_file: str = 'processed_files.log'):
-		"""Set up a separate logger for processed files"""
+	def setup_processed_files_logger(log_file: str = 'processed_files.log', failed_updates_log: str = 'failed_updates.log'):
+		"""Set up separate loggers for processed files and failed updates"""
+		# Set up processed files logger
 		if not processed_logger.handlers:
 			file_handler = logging.FileHandler(log_file, mode='w')
 			file_handler.setFormatter(logging.Formatter('%(message)s'))
@@ -55,6 +61,15 @@ class MetadataService:
 			
 			# Write CSV header
 			processed_logger.info("source_file,target_file,match_method,similarity,date_modified")
+		
+		# Set up failed updates logger
+		if not failed_updates_logger.handlers:
+			failed_file_handler = logging.FileHandler(failed_updates_log, mode='w')
+			failed_file_handler.setFormatter(logging.Formatter('%(message)s'))
+			failed_updates_logger.addHandler(failed_file_handler)
+			
+			# Write CSV header
+			failed_updates_logger.info("file_path,error_message,timestamp")
 
 	@staticmethod
 	def log_processed_file(source_file: str, target_file: str, match_method: str, similarity: float = 0.0):
@@ -64,6 +79,15 @@ class MetadataService:
 			processed_logger.info(f"{source_file},{target_file},{match_method},{similarity:.4f},{date_modified}")
 		except Exception as e:
 			logger.error(f"Error logging processed file: {str(e)}")
+			
+	@staticmethod
+	def log_failed_update(file_path: str, error_message: str):
+		"""Log a failed metadata update to the failed updates log"""
+		try:
+			timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+			failed_updates_logger.info(f"{file_path},{error_message},{timestamp}")
+		except Exception as e:
+			logger.error(f"Error logging failed update: {str(e)}")
 
 	@staticmethod
 	def find_metadata_pairs(old_dir: str, new_dir: str, use_hash_matching: bool = True, 

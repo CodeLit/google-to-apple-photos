@@ -10,7 +10,7 @@ Fix incorrect photo and video metadata (especially dates, GPS coordinates, and t
 - **Smart Matching**: Match files by name or image hash for accurate pairing
 - **Duplicate Detection**: Find and report duplicate files to avoid redundant imports
 - **File Extension Correction**: Automatically detect and fix incorrect file extensions (e.g., HEIC files that are actually JPEG)
-- **Detailed Logging**: Track all processed files and their metadata changes
+- **Detailed Logging**: Track all processed files and their metadata changes, including errors for failed updates
 - **Parallel Processing**: Optimize performance with multi-threaded operations
 - **Configurable Options**: Customize the synchronization process to fit your needs
 
@@ -74,6 +74,8 @@ options:
                         Only find and report duplicates without updating metadata
   --processed-log PROCESSED_LOG
                         Log file for processed files (default: processed_files.log)
+  --failed-updates-log FAILED_UPDATES_LOG
+                        Log file for failed metadata updates (default: failed_updates.log)
   --copy-to-new        Copy media files from old directory to new directory before processing
 ```
 
@@ -100,8 +102,9 @@ options:
 - **File Extension Correction**: Automatically detects and fixes incorrect file extensions (e.g., HEIC files that are actually JPEG)
 - **Improved File Type Detection**: More robust detection of actual file types regardless of extension
 - **Smart JPG/JPEG Handling**: Intelligently handles JPG/JPEG format variations without unnecessary conversions
-- **Enhanced Error Handling**: Better handling of edge cases and error conditions
+- **Enhanced Error Handling**: Better handling of edge cases and error conditions with dedicated error logging
 - **Optimized Logging**: Reduced log verbosity for common operations while preserving important information
+- **Failed Updates Tracking**: Separate logging for files that fail metadata updates for easier troubleshooting
 
 ## 📊 Usage Examples
 

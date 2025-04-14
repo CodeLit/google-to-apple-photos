@@ -44,6 +44,7 @@ def main():
 	parser.add_argument('--similarity', type=float, default=0.98, help='Similarity threshold for image matching (0.0-1.0, default: 0.98)')
 	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
 	parser.add_argument('--processed-log', default='processed_files.log', help='Log file for processed files (default: processed_files.log)')
+	parser.add_argument('--failed-updates-log', default='failed_updates.log', help='Log file for failed metadata updates (default: failed_updates.log)')
 	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
 	parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicate files in the new directory based on duplicates.log')
 	parser.add_argument('--duplicates-log', default='duplicates.log', help='Log file for duplicates (default: duplicates.log)')
@@ -84,8 +85,8 @@ def main():
 	if args.dry_run:
 		logger.info("Performing dry run (no files will be modified)")
 	
-	# Set up the processed files logger
-	MetadataService.setup_processed_files_logger(args.processed_log)
+	# Set up the processed files and failed updates loggers
+	MetadataService.setup_processed_files_logger(args.processed_log, args.failed_updates_log)
 	
 	# Copy files from old to new if requested
 	if args.copy_to_new:
@@ -251,13 +252,19 @@ def main():
 				success_count += 1
 			else:
 				failure_count += 1
+				# Log the failed update
+				error_message = "Failed to update metadata"
+				MetadataService.log_failed_update(new_file, error_message)
 				
 		except KeyboardInterrupt:
 			logger.warning("Process interrupted by user")
 			break
 		except Exception as e:
-			logger.error(f"Error processing {json_file}: {str(e)}")
+			error_message = str(e)
+			logger.error(f"Error processing {json_file}: {error_message}")
 			failure_count += 1
+			# Log the failed update with the specific error message
+			MetadataService.log_failed_update(new_file, error_message)
 	
 	# Calculate elapsed time
 	elapsed_time = time.time() - start_time
@@ -269,6 +276,8 @@ def main():
 	logger.info(f"Time elapsed: {int(minutes)} minutes, {int(seconds)} seconds")
 	logger.info(f"Successfully updated: {success_count} files")
 	logger.info(f"Failed to update: {failure_count} files")
+	if failure_count > 0:
+		logger.info(f"Failed updates are logged in: {args.failed_updates_log}")
 	logger.info(f"Not processed: {total_pairs - success_count - failure_count} files")
 	logger.info(f"Detailed processing log: {args.processed_log}")
 	logger.info(f"Duplicates report: duplicates.log")
