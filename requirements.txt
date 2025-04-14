@@ -1,0 +1,4 @@
+# Python dependencies for Google to Apple Photos Metadata Synchronizer
+
+# Core dependencies
+pathlib>=1.0.1
