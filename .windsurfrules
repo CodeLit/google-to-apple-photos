@@ -6,9 +6,8 @@ Fix incorrect photo and video metadata (especially dates) in files exported from
 
 ## Folders
 
-- ./old → contains original files exported from Google Takeout, with accompanying .json metadata files
+- ./old → contains original files exported from Google Takeout, with accompanying .json metadata files. Do not modify this folder
 - ./new → contains media files exported from Apple Photos Library ("Unmodified Originals"), some of which have incorrect or missing metadata
-- ./archive → contains old library for backup purposes
 
 ## Rules
 

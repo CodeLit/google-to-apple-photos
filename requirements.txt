@@ -1,4 +1,4 @@
 # Python dependencies for Google to Apple Photos Metadata Synchronizer
 
-# Core dependencies
-pathlib>=1.0.1
+# Core dependencies - все эти библиотеки входят в стандартную библиотеку Python 3.6+
+# Никаких внешних зависимостей не требуется, кроме exiftool

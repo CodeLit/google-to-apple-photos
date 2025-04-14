@@ -3,6 +3,7 @@
 ## Prerequisites
 
 1. **Python 3.6 or higher**
+
    - Check your Python version with `python --version` or `python3 --version`
    - Download from [python.org](https://www.python.org/downloads/) if needed
 
@@ -25,18 +26,19 @@
 1. **Clone or download this repository**
 
 2. **Install Python dependencies**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 3. **Prepare your directories**
-   - `./old` - Place Google Takeout export here (with JSON files)
+   - `./old` - Place Google Takeout export here (with JSON files). This files should not be modified
    - `./new` - Place Apple Photos exports here
-   - `./archive` - Optional backup location
 
 ## Verification
 
 Verify that exiftool is properly installed:
+
 ```bash
 exiftool -ver
 ```
