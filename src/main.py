@@ -39,6 +39,8 @@ def main():
 	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
 	parser.add_argument('--processed-log', default='processed_files.log', help='Log file for processed files (default: processed_files.log)')
 	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
+	parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicate files in the new directory based on duplicates.log')
+	parser.add_argument('--duplicates-log', default='duplicates.log', help='Log file for duplicates (default: duplicates.log)')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -119,6 +121,28 @@ def main():
 		
 		logger.info(f"Finished copying files. Copied {copied_count} files, skipped {skipped_count} existing files.")
 	
+	# Remove duplicates if requested
+	if args.remove_duplicates:
+		from src.utils.image_utils import remove_duplicates
+		logger.info(f"Removing duplicates based on {args.duplicates_log}...")
+		
+		# Check if the duplicates log exists
+		if not os.path.exists(args.duplicates_log):
+			logger.error(f"Duplicates log file not found: {args.duplicates_log}")
+			logger.info("Run the script with --find-duplicates-only first to generate the duplicates log")
+			return 1
+		
+		# Remove duplicates
+		processed, removed = remove_duplicates(args.duplicates_log, args.dry_run)
+		
+		# Print summary
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
+		else:
+			logger.info(f"Removed {removed} of {processed} duplicate files")
+		
+		return 0
+	
 	# Find duplicates only if requested
 	if args.find_duplicates_only:
 		from src.utils.image_utils import find_duplicates
@@ -127,7 +151,7 @@ def main():
 		if duplicates:
 			dup_count = sum(len(dups) for dups in duplicates.values())
 			logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
-			logger.info(f"Results written to duplicates.log")
+			logger.info(f"Results written to {args.duplicates_log}")
 		else:
 			logger.info("No duplicates found")
 		return 0
@@ -137,7 +161,8 @@ def main():
 	use_hash_matching = not args.no_hash_matching
 	metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
 												use_hash_matching=use_hash_matching, 
-												similarity_threshold=args.similarity)
+												similarity_threshold=args.similarity,
+												duplicates_log=args.duplicates_log)
 	
 	if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
 		logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")

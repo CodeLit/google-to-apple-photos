@@ -154,7 +154,7 @@ def hash_similarity(hash1: str, hash2: str) -> float:
 		# Return a binary similarity (1.0 if equal, 0.0 if different)
 		return 1.0 if hash1 == hash2 else 0.0
 
-def find_duplicates(directory: str, similarity_threshold: float = 0.98) -> Dict[str, List[str]]:
+def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log') -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
 	Uses parallel processing and optimized algorithms for faster performance.
@@ -272,6 +272,73 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98) -> Dict[
 
 # Cache for file hashes to avoid recomputing
 _file_hash_cache = {}
+
+def remove_duplicates(duplicates_log_path: str, dry_run: bool = False) -> Tuple[int, int]:
+	"""
+	Remove duplicate files based on the duplicates log file
+	
+	Args:
+		duplicates_log_path: Path to the duplicates log file
+		dry_run: If True, only print what would be done without actually removing files
+		
+	Returns:
+		Tuple of (number of duplicates processed, number of duplicates removed)
+	"""
+	if not os.path.exists(duplicates_log_path):
+		logger.error(f"Duplicates log file not found: {duplicates_log_path}")
+		return 0, 0
+	
+	import csv
+	
+	duplicates_processed = 0
+	duplicates_removed = 0
+	
+	try:
+		with open(duplicates_log_path, 'r', newline='') as f:
+			reader = csv.reader(f)
+			# Skip header if present
+			first_row = next(reader, None)
+			if first_row and first_row[0].lower() == 'original':
+				pass  # Skip header
+			else:
+				# Go back to the beginning if there was no header
+				f.seek(0)
+				reader = csv.reader(f)
+			
+			for row in reader:
+				if len(row) < 2:
+					continue
+				
+				original, duplicate = row
+				duplicates_processed += 1
+				
+				# Check if both files exist
+				if not os.path.exists(original):
+					logger.warning(f"Original file not found: {original}")
+					continue
+				
+				if not os.path.exists(duplicate):
+					logger.warning(f"Duplicate file not found: {duplicate}")
+					continue
+				
+				# Remove the duplicate
+				if dry_run:
+					logger.info(f"[DRY RUN] Would remove duplicate: {duplicate}")
+					duplicates_removed += 1
+				else:
+					try:
+						os.remove(duplicate)
+						logger.info(f"Removed duplicate: {duplicate}")
+						duplicates_removed += 1
+					except Exception as e:
+						logger.error(f"Error removing duplicate {duplicate}: {str(e)}")
+	
+		logger.info(f"Processed {duplicates_processed} duplicates, removed {duplicates_removed} files")
+		return duplicates_processed, duplicates_removed
+		
+	except Exception as e:
+		logger.error(f"Error processing duplicates log: {str(e)}")
+		return duplicates_processed, duplicates_removed
 
 def find_matching_file_by_hash(source_file: str, target_dir: str, 
 						  similarity_threshold: float = 0.98, 

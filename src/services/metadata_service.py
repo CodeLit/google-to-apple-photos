@@ -67,7 +67,7 @@ class MetadataService:
 
 	@staticmethod
 	def find_metadata_pairs(old_dir: str, new_dir: str, use_hash_matching: bool = True, 
-						   similarity_threshold: float = 0.98) -> List[Tuple[str, str, PhotoMetadata]]:
+						   similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log') -> List[Tuple[str, str, PhotoMetadata]]:
 		"""
 		Find pairs of files between old and new directories with their metadata
 		
@@ -145,14 +145,14 @@ class MetadataService:
 		# Find and log duplicates in the new directory
 		if use_hash_matching:
 			logger.info(f"Checking for duplicates in {new_dir}...")
-			duplicates = find_duplicates(new_dir, similarity_threshold)
+			duplicates = find_duplicates(new_dir, similarity_threshold, duplicates_log)
 			if duplicates:
 				dup_count = sum(len(dups) for dups in duplicates.values())
 				logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
 				
 				# Write duplicates to a CSV file
 				try:
-					with open('duplicates.log', 'w', newline='') as f:
+					with open(duplicates_log, 'w', newline='') as f:
 						writer = csv.writer(f)
 						writer.writerow(['original', 'duplicate'])
 						for original, dups in duplicates.items():
