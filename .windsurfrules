@@ -25,7 +25,7 @@ Fix incorrect photo and video metadata (especially dates) in files exported from
 
 User will re-import the corrected files from ./new into Apple Photos manually
 
-Python runs with pyton3 command.
+Python runs with pyton3 command. Use pip3 to install dependencies.
 
 ## Important (if presented) and also in json files:
 

@@ -108,7 +108,7 @@ class MetadataService:
 				
 				# Write duplicates to a CSV file
 				try:
-					with open('duplicates.csv', 'w', newline='') as f:
+					with open('duplicates.log', 'w', newline='') as f:
 						writer = csv.writer(f)
 						writer.writerow(['original', 'duplicate'])
 						for original, dups in duplicates.items():

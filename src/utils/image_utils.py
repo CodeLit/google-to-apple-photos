@@ -3,12 +3,20 @@ Utility functions for image processing, hashing and duplicate detection
 """
 import os
 import logging
+import hashlib
 from typing import Dict, List, Tuple, Set, Optional
 from pathlib import Path
-import imagehash
-from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger(__name__)
+
+# Try to import optional dependencies
+HAS_IMAGE_HASH = False
+try:
+	import imagehash
+	from PIL import Image, UnidentifiedImageError
+	HAS_IMAGE_HASH = True
+except ImportError:
+	logger.warning("imagehash or Pillow not installed. Using basic file matching instead of image hash matching.")
 
 # Supported image formats
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.heif', '.tiff', '.tif', '.bmp', '.gif'}
@@ -39,6 +47,10 @@ def compute_image_hash(image_path: str, hash_size: int = 8) -> Optional[str]:
 	Returns:
 		String representation of the hash or None if failed
 	"""
+	if not HAS_IMAGE_HASH:
+		# Fall back to simple file hash if imagehash is not available
+		return compute_file_hash(image_path)
+		
 	try:
 		if not is_image_file(image_path):
 			return None
@@ -53,15 +65,40 @@ def compute_image_hash(image_path: str, hash_size: int = 8) -> Optional[str]:
 		return str(phash)
 	except (UnidentifiedImageError, IOError, OSError) as e:
 		logger.debug(f"Could not compute hash for {image_path}: {str(e)}")
-		return None
+		return compute_file_hash(image_path)  # Fall back to file hash
 	except Exception as e:
 		logger.debug(f"Unexpected error computing hash for {image_path}: {str(e)}")
+		return compute_file_hash(image_path)  # Fall back to file hash
+
+
+def compute_file_hash(file_path: str) -> Optional[str]:
+	"""
+	Compute a simple hash based on file size and first few bytes
+	
+	Args:
+		file_path: Path to the file
+		
+	Returns:
+		String representation of the hash or None if failed
+	"""
+	try:
+		# Use file size and first few bytes as a simple hash
+		file_size = os.path.getsize(file_path)
+		with open(file_path, 'rb') as f:
+			first_bytes = f.read(1024)  # Read first 1KB
+			
+		m = hashlib.md5()
+		m.update(str(file_size).encode())
+		m.update(first_bytes)
+		return m.hexdigest()
+	except Exception as e:
+		logger.debug(f"Could not compute file hash for {file_path}: {str(e)}")
 		return None
 
 def compute_hash_for_file(file_path: str) -> Optional[str]:
 	"""
 	Compute hash for a file (image or video).
-	For images, use perceptual hash.
+	For images, use perceptual hash if available, otherwise use file hash.
 	For videos, use file size and first few bytes as a simple hash.
 	
 	Args:
@@ -73,20 +110,7 @@ def compute_hash_for_file(file_path: str) -> Optional[str]:
 	if is_image_file(file_path):
 		return compute_image_hash(file_path)
 	elif is_video_file(file_path):
-		try:
-			# For videos, use file size and first few bytes as a simple hash
-			file_size = os.path.getsize(file_path)
-			with open(file_path, 'rb') as f:
-				first_bytes = f.read(1024)  # Read first 1KB
-				
-			import hashlib
-			m = hashlib.md5()
-			m.update(str(file_size).encode())
-			m.update(first_bytes)
-			return m.hexdigest()
-		except Exception as e:
-			logger.debug(f"Could not compute hash for video {file_path}: {str(e)}")
-			return None
+		return compute_file_hash(file_path)
 	else:
 		return None
 
@@ -104,25 +128,35 @@ def hash_similarity(hash1: str, hash2: str) -> float:
 	if not hash1 or not hash2:
 		return 0.0
 		
-	try:
-		# Convert string hashes back to imagehash objects
-		h1 = imagehash.hex_to_hash(hash1) if isinstance(hash1, str) else hash1
-		h2 = imagehash.hex_to_hash(hash2) if isinstance(hash2, str) else hash2
+	# If hashes are identical, return 1.0
+	if hash1 == hash2:
+		return 1.0
 		
-		# Calculate hamming distance
-		distance = h1 - h2
-		max_distance = len(h1.hash) * len(h1.hash[0])  # Maximum possible distance
-		
-		# Convert distance to similarity score (0.0 to 1.0)
-		similarity = 1.0 - (distance / max_distance)
-		return similarity
-	except Exception as e:
-		logger.debug(f"Error calculating hash similarity: {str(e)}")
-		return 0.0
+	if HAS_IMAGE_HASH and hash1.startswith('0x') and hash2.startswith('0x'):
+		try:
+			# Convert string hashes back to imagehash objects
+			h1 = imagehash.hex_to_hash(hash1) if isinstance(hash1, str) else hash1
+			h2 = imagehash.hex_to_hash(hash2) if isinstance(hash2, str) else hash2
+			
+			# Calculate hamming distance
+			distance = h1 - h2
+			max_distance = len(h1.hash) * len(h1.hash[0])  # Maximum possible distance
+			
+			# Convert distance to similarity score (0.0 to 1.0)
+			similarity = 1.0 - (distance / max_distance)
+			return similarity
+		except Exception as e:
+			logger.debug(f"Error calculating hash similarity: {str(e)}")
+			return 0.0
+	else:
+		# For MD5 hashes, we can only check equality
+		# Return a binary similarity (1.0 if equal, 0.0 if different)
+		return 1.0 if hash1 == hash2 else 0.0
 
 def find_duplicates(directory: str, similarity_threshold: float = 0.98) -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
+	Uses parallel processing and optimized algorithms for faster performance.
 	
 	Args:
 		directory: Directory to search for duplicates
@@ -131,62 +165,116 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98) -> Dict[
 	Returns:
 		Dictionary mapping original files to lists of duplicate files
 	"""
-	hashes = {}  # Map hash to file path
-	duplicates = {}  # Map original file to list of duplicate files
+	import concurrent.futures
+	from collections import defaultdict
 	
-	# First pass: compute hashes for all images
+	duplicates = {}  # Map original file to list of duplicate files
+	media_files = []
+	
+	# Collect all media files first
+	logger.info(f"Collecting media files from {directory}...")
 	for root, _, files in os.walk(directory):
 		for file in files:
 			file_path = os.path.join(root, file)
 			if is_media_file(file_path):
-				file_hash = compute_hash_for_file(file_path)
+				media_files.append(file_path)
+	
+	logger.info(f"Found {len(media_files)} media files. Computing hashes...")
+	
+	# Group files by size first (quick filter)
+	size_groups = defaultdict(list)
+	for file_path in media_files:
+		try:
+			file_size = os.path.getsize(file_path)
+			# Only group files if they're within 5% size of each other
+			size_key = file_size // (1024 * 10)  # Group by 10KB chunks
+			size_groups[size_key].append(file_path)
+		except (OSError, IOError) as e:
+			logger.debug(f"Error getting size for {file_path}: {str(e)}")
+	
+	# Filter groups with only one file
+	potential_duplicate_groups = {size: files for size, files in size_groups.items() if len(files) > 1}
+	logger.info(f"Found {len(potential_duplicate_groups)} groups of files with similar sizes")
+	
+	# Function to compute hash for a file
+	def compute_hash_for_file_wrapper(file_path):
+		try:
+			return file_path, compute_hash_for_file(file_path)
+		except Exception as e:
+			logger.debug(f"Error computing hash for {file_path}: {str(e)}")
+			return file_path, None
+	
+	# Process each group in parallel
+	with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+		for size_key, files in potential_duplicate_groups.items():
+			# Compute hashes for all files in this group
+			hash_results = list(executor.map(compute_hash_for_file_wrapper, files))
+			
+			# Group files by hash
+			hash_groups = defaultdict(list)
+			for file_path, file_hash in hash_results:
 				if file_hash:
-					if file_hash not in hashes:
-						hashes[file_hash] = file_path
-					else:
-						# Exact hash match - definite duplicate
-						original = hashes[file_hash]
-						if original not in duplicates:
-							duplicates[original] = []
-						duplicates[original].append(file_path)
-	
-	# Second pass: check for similar (but not identical) images
-	hash_items = list(hashes.items())
-	for i in range(len(hash_items)):
-		hash1, file1 = hash_items[i]
-		
-		# Skip if this file is already marked as a duplicate
-		if any(file1 in dups for dups in duplicates.values()):
-			continue
+					hash_groups[file_hash].append(file_path)
 			
-		for j in range(i + 1, len(hash_items)):
-			hash2, file2 = hash_items[j]
+			# Add exact hash matches to duplicates
+			for file_hash, file_paths in hash_groups.items():
+				if len(file_paths) > 1:
+					# Sort by modification time to keep the oldest file as original
+					file_paths.sort(key=lambda f: os.path.getmtime(f))
+					original = file_paths[0]
+					if original not in duplicates:
+						duplicates[original] = []
+					duplicates[original].extend(file_paths[1:])
 			
-			# Skip if this file is already marked as a duplicate
-			if any(file2 in dups for dups in duplicates.values()):
-				continue
+			# If using perceptual hashing, check for similar (but not identical) images
+			if HAS_IMAGE_HASH:
+				# Only compare hashes between different groups
+				hash_items = [(h, f) for h, files in hash_groups.items() 
+							 for f in files if len(files) == 1 and is_image_file(f)]
 				
-			# Check similarity
-			similarity = hash_similarity(hash1, hash2)
-			if similarity >= similarity_threshold:
-				# Determine which file to keep as original (e.g., keep the older file)
-				original = file1
-				duplicate = file2
+				# Skip small groups
+				if len(hash_items) <= 1:
+					continue
 				
-				if os.path.getmtime(file2) < os.path.getmtime(file1):
-					original = file2
-					duplicate = file1
-				
-				if original not in duplicates:
-					duplicates[original] = []
-				duplicates[original].append(duplicate)
+				# Compare each pair of hashes
+				for i in range(len(hash_items)):
+					hash1, file1 = hash_items[i]
+					
+					# Skip if this file is already marked as a duplicate
+					if any(file1 in dups for dups in duplicates.values()):
+						continue
+						
+					for j in range(i + 1, len(hash_items)):
+						hash2, file2 = hash_items[j]
+						
+						# Skip if this file is already marked as a duplicate
+						if any(file2 in dups for dups in duplicates.values()):
+							continue
+							
+						# Check similarity
+						similarity = hash_similarity(hash1, hash2)
+						if similarity >= similarity_threshold:
+							# Determine which file to keep as original (e.g., keep the older file)
+							original = file1
+							duplicate = file2
+							
+							if os.path.getmtime(file2) < os.path.getmtime(file1):
+								original = file2
+								duplicate = file1
+							
+							if original not in duplicates:
+								duplicates[original] = []
+							duplicates[original].append(duplicate)
 	
+	logger.info(f"Found {sum(len(dups) for dups in duplicates.values())} duplicate files in {len(duplicates)} groups")
 	return duplicates
 
 def find_matching_file_by_hash(source_file: str, target_dir: str, 
-							  similarity_threshold: float = 0.98) -> Optional[str]:
+						  similarity_threshold: float = 0.98) -> Optional[str]:
 	"""
-	Find a matching file in target_dir based on perceptual hash similarity.
+	Find a matching file in target_dir based on hash similarity.
+	If imagehash is available, uses perceptual hash for images.
+	Otherwise, falls back to simple file hash comparison.
 	
 	Args:
 		source_file: Source file to match

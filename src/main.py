@@ -38,6 +38,7 @@ def main():
 	parser.add_argument('--similarity', type=float, default=0.98, help='Similarity threshold for image matching (0.0-1.0, default: 0.98)')
 	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
 	parser.add_argument('--processed-log', default='processed_files.log', help='Log file for processed files (default: processed_files.log)')
+	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -72,6 +73,52 @@ def main():
 	# Set up the processed files logger
 	MetadataService.setup_processed_files_logger(args.processed_log)
 	
+	# Copy files from old to new if requested
+	if args.copy_to_new:
+		logger.info(f"Copying media files from {old_dir} to {new_dir}...")
+		copied_count = 0
+		skipped_count = 0
+		
+		# Walk through the old directory
+		for root, _, files in os.walk(old_dir):
+			for file in files:
+				# Skip JSON metadata files
+				if file.endswith('.json'):
+					continue
+				
+				# Get source and destination paths
+				source_path = os.path.join(root, file)
+				
+				# Create relative path from old_dir
+				rel_path = os.path.relpath(source_path, old_dir)
+				
+				# Skip if the file is in a subdirectory that's not a media file
+				from src.utils.image_utils import is_media_file
+				if not is_media_file(source_path):
+					continue
+				
+				# Create destination path
+				dest_path = os.path.join(new_dir, os.path.basename(source_path))
+				
+				# Skip if the file already exists in the new directory
+				if os.path.exists(dest_path):
+					skipped_count += 1
+					continue
+				
+				try:
+					# Copy the file
+					import shutil
+					shutil.copy2(source_path, dest_path)
+					copied_count += 1
+					
+					# Log progress every 100 files
+					if copied_count % 100 == 0:
+						logger.info(f"Copied {copied_count} files to {new_dir}")
+				except Exception as e:
+					logger.error(f"Error copying {source_path} to {dest_path}: {str(e)}")
+		
+		logger.info(f"Finished copying files. Copied {copied_count} files, skipped {skipped_count} existing files.")
+	
 	# Find duplicates only if requested
 	if args.find_duplicates_only:
 		from src.utils.image_utils import find_duplicates
@@ -80,7 +127,7 @@ def main():
 		if duplicates:
 			dup_count = sum(len(dups) for dups in duplicates.values())
 			logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
-			logger.info(f"Results written to duplicates.csv")
+			logger.info(f"Results written to duplicates.log")
 		else:
 			logger.info("No duplicates found")
 		return 0
@@ -139,7 +186,7 @@ def main():
 	logger.info(f"Failed to update: {failure_count} files")
 	logger.info(f"Not processed: {total_pairs - success_count - failure_count} files")
 	logger.info(f"Detailed processing log: {args.processed_log}")
-	logger.info(f"Duplicates report: duplicates.csv")
+	logger.info(f"Duplicates report: duplicates.log")
 	logger.info("=" * 50)
 	
 	if success_count > 0:
