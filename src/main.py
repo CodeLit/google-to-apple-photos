@@ -34,6 +34,10 @@ def main():
 	parser.add_argument('--limit', type=int, help='Limit processing to specified number of files')
 	parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
 	parser.add_argument('--quiet', '-q', action='store_true', help='Suppress warning messages about missing files')
+	parser.add_argument('--no-hash-matching', action='store_true', help='Disable image hash matching (faster but less accurate)')
+	parser.add_argument('--similarity', type=float, default=0.98, help='Similarity threshold for image matching (0.0-1.0, default: 0.98)')
+	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
+	parser.add_argument('--processed-log', default='processed_files.log', help='Log file for processed files (default: processed_files.log)')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -65,15 +69,36 @@ def main():
 	if args.dry_run:
 		logger.info("Performing dry run (no files will be modified)")
 	
+	# Set up the processed files logger
+	MetadataService.setup_processed_files_logger(args.processed_log)
+	
+	# Find duplicates only if requested
+	if args.find_duplicates_only:
+		from src.utils.image_utils import find_duplicates
+		logger.info(f"Finding duplicates in {new_dir}...")
+		duplicates = find_duplicates(new_dir, args.similarity)
+		if duplicates:
+			dup_count = sum(len(dups) for dups in duplicates.values())
+			logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
+			logger.info(f"Results written to duplicates.csv")
+		else:
+			logger.info("No duplicates found")
+		return 0
+	
 	# Find metadata pairs
 	logger.info(f"Scanning directories: {old_dir} -> {new_dir}")
-	metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir)
+	use_hash_matching = not args.no_hash_matching
+	metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
+												use_hash_matching=use_hash_matching, 
+												similarity_threshold=args.similarity)
 	
 	if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
 		logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")
 		metadata_pairs = metadata_pairs[:args.limit]
 	else:
 		logger.info(f"Found {len(metadata_pairs)} matching file pairs")
+	
+	logger.info(f"Detailed processing log written to {args.processed_log}")
 	
 	# Process files
 	success_count = 0
@@ -113,6 +138,8 @@ def main():
 	logger.info(f"Successfully updated: {success_count} files")
 	logger.info(f"Failed to update: {failure_count} files")
 	logger.info(f"Not processed: {total_pairs - success_count - failure_count} files")
+	logger.info(f"Detailed processing log: {args.processed_log}")
+	logger.info(f"Duplicates report: duplicates.csv")
 	logger.info("=" * 50)
 	
 	if success_count > 0:
