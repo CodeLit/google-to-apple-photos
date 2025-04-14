@@ -1,5 +1,9 @@
 # .windsurfrules
 
+## Language
+
+Use English language in all code and documentation.
+
 ## Purpose
 
 Correct inaccurate or missing photo and video metadata (especially creation dates) in files exported from Apple Photos by referencing accurate metadata from Google Takeout JSON files.
