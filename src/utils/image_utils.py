@@ -444,7 +444,8 @@ _file_hash_cache = {}
 
 def find_potential_duplicates(directory: str, suffix: str = ' (1)') -> Dict[str, str]:
 	"""
-	Find potential duplicates by checking for files with the same base name but with a suffix
+	Find potential duplicates by checking for files with the same base name but with different extensions
+	or with a suffix like ' (1)' or UUID-style duplicates
 	
 	Args:
 		directory: Directory containing files to check
@@ -453,6 +454,8 @@ def find_potential_duplicates(directory: str, suffix: str = ' (1)') -> Dict[str,
 	Returns:
 		Dictionary mapping original files to potential duplicates
 	"""
+	from src.utils.file_utils import are_duplicate_filenames, is_uuid_filename, get_base_filename
+	
 	if not os.path.exists(directory):
 		logger.error(f"Directory not found: {directory}")
 		return {}
@@ -468,6 +471,8 @@ def find_potential_duplicates(directory: str, suffix: str = ' (1)') -> Dict[str,
 	
 	# Find potential duplicates
 	potential_duplicates = {}
+	
+	# First, check for traditional suffix-based duplicates
 	for filename, file_path in file_lookup.items():
 		if suffix in filename:
 			continue  # Skip files that already have the suffix
@@ -476,6 +481,33 @@ def find_potential_duplicates(directory: str, suffix: str = ' (1)') -> Dict[str,
 		dup_filename = filename.split('.')[0] + suffix + '.' + filename.split('.')[-1]
 		if dup_filename in file_lookup:
 			potential_duplicates[file_path] = file_lookup[dup_filename]
+			logger.debug(f"Found suffix-based duplicate: {filename} -> {dup_filename}")
+	
+	# Now check for extension-based duplicates and UUID-style duplicates
+	processed_pairs = set()  # To avoid processing the same pair twice
+	for i, file1 in enumerate(all_files):
+		filename1 = os.path.basename(file1)
+		for file2 in all_files[i+1:]:
+			filename2 = os.path.basename(file2)
+			
+			# Skip if we've already processed this pair
+			pair_key = f"{file1}|{file2}"
+			if pair_key in processed_pairs:
+				continue
+			
+			# Check if they're duplicates based on our custom detection
+			if are_duplicate_filenames(filename1, filename2):
+				# Prefer non-UUID filenames as the "original"
+				if is_uuid_filename(filename1) and not is_uuid_filename(filename2):
+					potential_duplicates[file2] = file1
+					logger.debug(f"Found extension/UUID duplicate: {filename2} -> {filename1}")
+				else:
+					potential_duplicates[file1] = file2
+					logger.debug(f"Found extension/UUID duplicate: {filename1} -> {filename2}")
+				
+				# Mark this pair as processed
+				processed_pairs.add(pair_key)
+				processed_pairs.add(f"{file2}|{file1}")  # Add reverse pair too
 	
 	logger.info(f"Found {len(potential_duplicates)} potential duplicate pairs")
 	return potential_duplicates
