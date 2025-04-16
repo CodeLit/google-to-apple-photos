@@ -11,7 +11,7 @@ from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 
 from src.models.metadata import PhotoMetadata
-from src.utils.file_utils import get_base_filename, find_matching_file, extract_date_from_filename
+from src.utils.file_utils import extract_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
 from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,98 @@ class MetadataService:
 		except Exception as e:
 			logger.error(f"Error parsing JSON file {json_file}: {str(e)}")
 			return None
+	
+	@staticmethod
+	def find_matching_file(json_path: str, new_dir: str) -> Optional[str]:
+		"""
+		Find a matching file in the new directory based on the JSON metadata file
+		
+		Args:
+			json_path: Path to the JSON metadata file
+			new_dir: Path to the directory with new files
+			
+		Returns:
+			Path to the matching file or None if not found
+		"""
+		# Extract the base filename from the JSON file (without extension and .json suffix)
+		json_filename = os.path.basename(json_path)
+		base_filename = extract_base_filename(json_filename.replace(".supplemental-metadata.json", ""))
+		
+		# Look for matching files in the new directory
+		matching_files = []
+		for filename in os.listdir(new_dir):
+			# Check for exact match first
+			if filename.startswith(base_filename):
+				matching_files.append(filename)
+			# For UUID-style filenames, check if they're duplicates
+			elif is_uuid_filename(filename) and os.path.exists(os.path.join(new_dir, base_filename)):
+				if are_duplicate_filenames(filename, base_filename):
+					matching_files.append(filename)
+		
+		# If we found any matching files, return the first one
+		if matching_files:
+			# Prefer non-UUID filenames if available
+			non_uuid_files = [f for f in matching_files if not is_uuid_filename(f)]
+			if non_uuid_files:
+				return os.path.join(new_dir, non_uuid_files[0])
+			return os.path.join(new_dir, matching_files[0])
+			
+		return None
+	
+	@staticmethod
+	def find_files_without_metadata(new_dir: str, json_dir: str) -> List[str]:
+		"""
+		Find files in the new directory that don't have matching JSON metadata
+		
+		Args:
+			new_dir: Path to the directory with new files
+			json_dir: Path to the directory with JSON metadata files
+			
+		Returns:
+			List of paths to files without metadata
+		"""
+		files_without_metadata = []
+		processed_duplicates = set()  # Track processed duplicate files
+		
+		for filename in os.listdir(new_dir):
+			file_path = os.path.join(new_dir, filename)
+			if os.path.isfile(file_path):
+				# Skip if this file has been processed as a duplicate
+				if file_path in processed_duplicates:
+					continue
+					
+				base_filename = extract_base_filename(filename)
+				json_path = os.path.join(json_dir, f"{filename}.supplemental-metadata.json")
+				
+				# Check for direct match first
+				if os.path.exists(json_path):
+					continue
+					
+				# For UUID-style filenames, check if there's a matching JSON with a different extension
+				if is_uuid_filename(filename):
+					found_match = False
+					for json_filename in os.listdir(json_dir):
+						if json_filename.endswith(".supplemental-metadata.json"):
+							base_json_filename = json_filename.replace(".supplemental-metadata.json", "")
+							if are_duplicate_filenames(filename, base_json_filename):
+								found_match = True
+								break
+					if found_match:
+						continue
+					
+				# Check for duplicate files in the new directory
+				duplicate_files = []
+				for other_filename in os.listdir(new_dir):
+					if other_filename != filename and are_duplicate_filenames(filename, other_filename):
+						duplicate_files.append(os.path.join(new_dir, other_filename))
+				
+				# If we found duplicates, add them to the processed set
+				for dup_file in duplicate_files:
+					processed_duplicates.add(dup_file)
+				
+				files_without_metadata.append(file_path)
+					
+		return files_without_metadata
 	
 	@staticmethod
 	def setup_processed_files_logger(log_file: str = 'processed_files.log', failed_updates_log: str = 'failed_updates.log'):

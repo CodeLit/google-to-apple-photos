@@ -10,7 +10,7 @@ from pathlib import Path
 # Add the project root directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.file_utils import extract_date_from_filename
+from src.utils.file_utils import extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
 
 
 class TestFileUtils(unittest.TestCase):
@@ -97,6 +97,44 @@ class TestFileUtils(unittest.TestCase):
 		# Invalid day
 		result = extract_date_from_filename("IMG-20210232-WA0001.jpg")
 		self.assertIsNone(result)
+
+	def test_uuid_filename_detection(self):
+		"""Test detection of UUID-style filenames"""
+		# Valid UUID filenames
+		self.assertTrue(is_uuid_filename("1D259D70-974B-4D1C-921E-7F35783509C1_1_201_a.jpeg"))
+		self.assertTrue(is_uuid_filename("1D259D70-974B-4D1C-921E-7F35783509C1.jpg"))
+		self.assertTrue(is_uuid_filename("1D259D70-974B-4D1C-921E-7F35783509C1_1.heic"))
+		self.assertTrue(is_uuid_filename("1D259D70-974B-4D1C-921E-7F35783509C1_1_201.png"))
+
+		# Invalid UUID filenames
+		self.assertFalse(is_uuid_filename("IMG_1234.jpg"))
+		self.assertFalse(is_uuid_filename("IMG20230608154246.jpg"))
+		self.assertFalse(is_uuid_filename("2021-03-07_23-15-52.jpg"))
+
+	def test_duplicate_filename_detection(self):
+		"""Test detection of duplicate filenames"""
+		# Same UUID with different extensions
+		self.assertTrue(are_duplicate_filenames(
+			"1D259D70-974B-4D1C-921E-7F35783509C1_1_201_a.jpeg",
+			"1D259D70-974B-4D1C-921E-7F35783509C1_1_201_a.jpg"
+		))
+
+		# Same UUID with different modifiers
+		self.assertTrue(are_duplicate_filenames(
+			"1D259D70-974B-4D1C-921E-7F35783509C1_1_201_a.jpeg",
+			"1D259D70-974B-4D1C-921E-7F35783509C1.jpg"
+		))
+
+		# Same base name with different extensions
+		self.assertTrue(are_duplicate_filenames("IMG_1234.jpg", "IMG_1234.jpeg"))
+		self.assertTrue(are_duplicate_filenames("IMG_1234.jpg", "IMG_1234.heic"))
+
+		# Different filenames
+		self.assertFalse(are_duplicate_filenames("IMG_1234.jpg", "IMG_5678.jpg"))
+		self.assertFalse(are_duplicate_filenames(
+			"1D259D70-974B-4D1C-921E-7F35783509C1.jpg",
+			"2E369E81-085C-4E2D-932F-8F46794E621D.jpg"
+		))
 
 
 if __name__ == "__main__":

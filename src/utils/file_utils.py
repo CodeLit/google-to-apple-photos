@@ -29,6 +29,46 @@ def get_base_filename(file_path: str) -> str:
 	return os.path.splitext(filename)[0]
 
 
+def is_uuid_filename(filename: str) -> bool:
+	"""
+	Check if the filename follows the Apple UUID pattern like 1D259D70-974B-4D1C-921E-7F35783509C1_1_201_a.jpeg
+	
+	Args:
+		filename: Filename to check
+		
+	Returns:
+		True if the filename follows the UUID pattern, False otherwise
+	"""
+	# UUID pattern: 8-4-4-4-12 hex digits, possibly followed by modifiers
+	uuid_pattern = re.compile(r'^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}(_\d+)*(_\d+)*(_[a-z])*\.[a-zA-Z0-9]+$', re.IGNORECASE)
+	return bool(uuid_pattern.match(filename))
+
+
+def are_duplicate_filenames(filename1: str, filename2: str) -> bool:
+	"""
+	Check if two filenames are duplicates (same base name but different extensions)
+	
+	Args:
+		filename1: First filename
+		filename2: Second filename
+		
+	Returns:
+		True if the filenames are duplicates, False otherwise
+	"""
+	base_name1, ext1 = os.path.splitext(filename1)
+	base_name2, ext2 = os.path.splitext(filename2)
+	
+	# If both are UUID-style filenames, they're duplicates if the UUIDs match
+	if is_uuid_filename(filename1) and is_uuid_filename(filename2):
+		# Extract just the UUID part (before any underscores)
+		uuid1 = base_name1.split('_')[0]
+		uuid2 = base_name2.split('_')[0]
+		return uuid1.lower() == uuid2.lower()
+	
+	# For regular filenames, they're duplicates if the base names match
+	return base_name1.lower() == base_name2.lower() and ext1.lower() != ext2.lower()
+
+
 def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
 	"""
 	Extract date from filename patterns like IMG-YYYYMMDD-WA0012.jpg or 2021-03-07_23-15-52.jpg

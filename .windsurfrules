@@ -1,52 +1,59 @@
-# .windsurfrules
+# Fix Metadata in Apple Photos Using Google Takeout
 
-## Language
+You are an experienced Python developer.
 
-Use English language in all code and documentation.
+Write a script that processes metadata of photos and videos exported from Apple Photos and fixes them using data from Google Takeout JSON files.
 
-## Purpose
+## Constraints
 
-Correct inaccurate or missing photo and video metadata (especially creation dates) in files exported from Apple Photos by referencing accurate metadata from Google Takeout JSON files.
+- Use English for all code, comments, and output.
+- Python 3 only. Use `pip3` to install any dependencies.
+- Use `exiftool` or an equivalent method to modify file metadata.
 
 ## Folder Structure
 
-- `./old` — Contains original media files exported from Google Takeout, each with an accompanying `.json` metadata file. This folder must remain untouched.
-- `./new` — Contains media files exported from Apple Photos Library ("Unmodified Originals"). These may have incorrect or missing metadata.
+- `./old`: Read-only. Contains original files from Google Takeout and their corresponding `.json` metadata files.
+- `./new`: Contains Apple Photos media files to be updated. Some may have incorrect or missing metadata.
 
-## Processing Rules
+## Rules
 
-1. For each `.json` file in `./old`, extract the `photoTakenTime` field.
-2. Match each `.json` file to its corresponding media file by name (e.g., `IMG_1234.json` → `IMG_1234.jpg`).
-3. If a matching media file exists in `./new`, update its metadata using the values from the `.json` file.
-4. Use `exiftool` or a similar tool to set the following fields:
-   - `DateTimeOriginal` (when the photo was taken)
-   - `CreateDate` (when the file was created)
-   - `ModifyDate` (last modified timestamp)
-5. Do not manually move, copy, or rename any files. This script only modifies metadata in-place within `./new`.
+1. For every `.json` file in `./old`, extract:
+   - `photoTakenTime.timestamp` (for date fields)
+   - `title` (optional)
+   - GPS coordinates if present (`latitude`, `longitude`)
+2. Match the `.json` file to a media file by filename (e.g., `IMG_1234.json` → `IMG_1234.jpg`).
+3. If the matching file exists in `./new`, update its metadata using `exiftool`:
+   - `DateTimeOriginal`
+   - `CreateDate`
+   - `ModifyDate`
+   - `Title` (optional)
+   - GPS data (optional)
+4. Do not move, copy, or rename any files. Modify files in-place inside `./new`.
 
-## Additional Metadata (optional if available)
+## Output
 
-- `Title`
-- GPS coordinates (`latitude`, `longitude`)
+- Only print essential information:
+  - Number of total, matched, updated, and failed files.
+  - Errors for debugging if any issues occur.
+- Do not spam logs or console with verbose output.
 
-## Output and Logging
-
-- Display only essential progress, statistics, and total files processed.
-- Print detailed errors only when necessary for debugging.
-- Avoid verbose or repeated console logs.
-
-## Python Environment
-
-- Use `python3` to run the script.
-- Use `pip3` to install any required dependencies.
-
-## Code Style Guidelines
+## Style & Structure
 
 - Follow modern Python best practices.
 - Avoid code duplication.
-- Keep logic clean, readable, and minimal.
-- Validate behavior and structure before execution.
+- Keep the code clean, readable, and maintainable.
+- Validate data before writing metadata.
+- Write self-contained, minimal logic.
 
 ## Final Step (Manual)
 
-After running the script, the user will manually re-import the corrected files from `./new` into the Apple Photos Library.
+The user will manually re-import the corrected files from `./new` into Apple Photos.
+
+## Testing
+
+- Add basic automated tests to a `tests/` folder.
+- Focus tests on filename matching and JSON parsing logic.
+
+## Comments
+
+- Write short comments to clarify complex logic, but avoid excessive commenting.
