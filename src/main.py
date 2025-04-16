@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.exiftool_service import ExifToolService
 from services.metadata_service import MetadataService
+from src.utils.file_utils import extract_date_from_filename
 
 # Configure logging
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -81,8 +82,41 @@ def find_json_metadata(file_path, old_dir):
 					except Exception as e:
 						logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
 	
-	# Try to extract date from filename patterns
-	# Pattern like image_2021-03-07_235256.png
+	# Try to extract date from filename patterns using the utility function
+	date_info = extract_date_from_filename(file_path)
+	if date_info:
+		date_str, pattern_desc = date_info
+		try:
+			# Parse the date string (format: YYYY:MM:DD)
+			year, month, day = date_str.split(':')
+			
+			# Check if this is a pattern with time component
+			if "YYYY-MM-DD_HH-MM-SS pattern" in pattern_desc:
+				# Extract time from filename
+				time_match = re.search(r'_([0-9]{2})-([0-9]{2})-([0-9]{2})', base_name)
+				if time_match:
+					hour = int(time_match.group(1))
+					minute = int(time_match.group(2))
+					second = int(time_match.group(3))
+					date_taken = datetime(int(year), int(month), int(day), hour, minute, second)
+				else:
+					# Fallback to noon if time extraction fails
+					date_taken = datetime(int(year), int(month), int(day), 12, 0, 0)
+			else:
+				# For patterns without time, set to noon
+				date_taken = datetime(int(year), int(month), int(day), 12, 0, 0)
+			
+			logger.info(f"Extracted date {date_taken} from filename {base_name} using {pattern_desc}")
+			return {
+				'date_taken': date_taken,
+				'json_path': None,
+				'data': None
+			}
+		except ValueError as e:
+			logger.warning(f"Error parsing date from filename {base_name}: {str(e)}")
+			pass
+			
+	# Legacy pattern like image_2021-03-07_235256.png
 	date_match = re.search(r'image_(\d{4}-\d{2}-\d{2})_', base_name)
 	if date_match:
 		date_str = date_match.group(1)

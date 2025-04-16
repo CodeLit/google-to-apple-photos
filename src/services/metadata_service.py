@@ -11,7 +11,7 @@ from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 
 from src.models.metadata import PhotoMetadata
-from src.utils.file_utils import get_base_filename, find_matching_file
+from src.utils.file_utils import get_base_filename, find_matching_file, extract_date_from_filename
 from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,59 @@ failed_updates_logger.propagate = False  # Don't propagate to parent loggers
 
 class MetadataService:
 	"""Service for handling metadata operations"""
+	
+	@staticmethod
+	def extract_metadata_from_filename(file_path: str) -> Optional[PhotoMetadata]:
+		"""
+		Extract metadata from filename patterns like IMG-YYYYMMDD-WA0012.jpg or 2021-03-07_23-15-52.jpg
+		
+		Args:
+			file_path: Path to the file
+			
+		Returns:
+			PhotoMetadata object or None if no pattern match
+		"""
+		# Try to extract date from filename
+		date_info = extract_date_from_filename(file_path)
+		if date_info:
+			date_str, pattern_desc = date_info
+			
+			# Create a datetime object from the date string
+			try:
+				# Parse the date string (format: YYYY:MM:DD)
+				year, month, day = date_str.split(':')
+				
+				# Check if this is a pattern with time component
+				if "YYYY-MM-DD_HH-MM-SS pattern" in pattern_desc:
+					# Extract time from filename
+					filename = os.path.basename(file_path)
+					time_match = re.search(r'_([0-9]{2})-([0-9]{2})-([0-9]{2})', filename)
+					if time_match:
+						hour = int(time_match.group(1))
+						minute = int(time_match.group(2))
+						second = int(time_match.group(3))
+						date_taken = datetime(int(year), int(month), int(day), hour, minute, second)
+					else:
+						# Fallback to noon if time extraction fails
+						date_taken = datetime(int(year), int(month), int(day), 12, 0, 0)
+				else:
+					# For patterns without time, set to noon
+					date_taken = datetime(int(year), int(month), int(day), 12, 0, 0)
+				
+				# Create metadata object
+				filename = os.path.basename(file_path)
+				logger.info(f"Extracted date {date_taken} from filename {filename} using {pattern_desc}")
+				
+				return PhotoMetadata(
+					filename=filename,
+					date_taken=date_taken,
+					title=filename,
+					description=f"Date extracted from filename pattern: {pattern_desc}"
+				)
+			except Exception as e:
+				logger.warning(f"Error creating metadata from filename {file_path}: {str(e)}")
+		
+		return None
 	
 	@staticmethod
 	def parse_json_metadata(json_file: str) -> Optional[PhotoMetadata]:

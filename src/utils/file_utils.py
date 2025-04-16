@@ -29,6 +29,59 @@ def get_base_filename(file_path: str) -> str:
 	return os.path.splitext(filename)[0]
 
 
+def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
+	"""
+	Extract date from filename patterns like IMG-YYYYMMDD-WA0012.jpg or 2021-03-07_23-15-52.jpg
+	
+	Args:
+		file_path: Path to the file
+		
+	Returns:
+		Tuple of (date string in YYYY:MM:DD format, match pattern description) or None if no match
+	"""
+	filename = os.path.basename(file_path)
+	
+	# Match IMG-YYYYMMDD pattern (e.g., IMG-20161231-WA0012.jpg)
+	img_date_match = re.match(r'IMG-([0-9]{4})([0-9]{2})([0-9]{2}).*\..+', filename, re.IGNORECASE)
+	if img_date_match:
+		year = img_date_match.group(1)
+		month = img_date_match.group(2)
+		day = img_date_match.group(3)
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			datetime(int(year), int(month), int(day))
+			
+			# Return formatted date string
+			return f"{year}:{month}:{day}", "IMG-YYYYMMDD pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
+	# Match YYYY-MM-DD_HH-MM-SS pattern (e.g., 2021-03-07_23-15-52.jpg)
+	date_time_match = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2}).*\..+', filename)
+	if date_time_match:
+		date_str = date_time_match.group(1)  # YYYY-MM-DD
+		time_str = date_time_match.group(2).replace('-', ':')  # HH:MM:SS
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
+			
+			# Return formatted date string (YYYY:MM:DD)
+			year, month, day = date_str.split('-')
+			return f"{year}:{month}:{day}", "YYYY-MM-DD_HH-MM-SS pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
+	return None
+
+
 def find_matching_file(base_name: str, target_dir: str) -> Optional[str]:
 	"""
 	Find a file in target_dir that matches the base_name.
