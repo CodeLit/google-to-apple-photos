@@ -11,7 +11,7 @@ from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 
 from src.models.metadata import PhotoMetadata
-from src.utils.file_utils import extract_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
+from src.utils.file_utils import get_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
 from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ class MetadataService:
 		"""
 		# Extract the base filename from the JSON file (without extension and .json suffix)
 		json_filename = os.path.basename(json_path)
-		base_filename = extract_base_filename(json_filename.replace(".supplemental-metadata.json", ""))
+		base_filename = get_base_filename(json_filename.replace(".supplemental-metadata.json", ""))
 		
 		# Look for matching files in the new directory
 		matching_files = []
@@ -162,7 +162,7 @@ class MetadataService:
 				if file_path in processed_duplicates:
 					continue
 					
-				base_filename = extract_base_filename(filename)
+				base_filename = get_base_filename(filename)
 				json_path = os.path.join(json_dir, f"{filename}.supplemental-metadata.json")
 				
 				# Check for direct match first

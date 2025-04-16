@@ -16,8 +16,8 @@ from datetime import datetime
 # Add the parent directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.exiftool_service import ExifToolService
-from services.metadata_service import MetadataService
+from src.services.exiftool_service import ExifToolService
+from src.services.metadata_service import MetadataService
 from src.utils.file_utils import extract_date_from_filename
 
 # Configure logging
@@ -550,7 +550,7 @@ def main():
 				rel_path = os.path.relpath(source_path, old_dir)
 				
 				# Skip if the file is in a subdirectory that's not a media file
-				from utils.image_utils import is_media_file
+				from src.utils.image_utils import is_media_file
 				if not is_media_file(source_path):
 					continue
 				
@@ -578,8 +578,8 @@ def main():
 	
 	# Remove duplicates if requested
 	if args.remove_duplicates:
-		from utils.image_utils import remove_duplicates
-		logger.info(f"Removing duplicates based on {args.duplicates_log}...")
+		from src.utils.image_utils import remove_duplicates
+		logger.info(f"Removing duplicates in {new_dir} based on {args.duplicates_log}...")
 		
 		# Check if the duplicates log exists
 		if not os.path.exists(args.duplicates_log):
@@ -600,8 +600,8 @@ def main():
 	
 	# Rename files if requested
 	if args.rename_files:
-		from utils.image_utils import rename_files_remove_suffix
-		logger.info(f"Renaming files by removing '{args.rename_suffix}' from filenames in {new_dir}...")
+		from src.utils.image_utils import rename_files_remove_suffix
+		logger.info(f"Renaming files in {new_dir} by removing '{args.rename_suffix}' suffix...")
 		
 		# Rename files
 		processed, renamed = rename_files_remove_suffix(new_dir, args.rename_suffix, args.dry_run)
@@ -616,7 +616,7 @@ def main():
 	
 	# Check metadata status if requested
 	if args.check_metadata:
-		from utils.image_utils import check_metadata_status
+		from src.utils.image_utils import check_metadata_status
 		logger.info(f"Checking metadata status for files in {new_dir}...")
 		
 		# Check metadata status
@@ -632,7 +632,7 @@ def main():
 	
 	# Find duplicates by name if requested
 	if args.find_duplicates_by_name:
-		from utils.image_utils import find_duplicates_by_name
+		from src.utils.image_utils import find_duplicates_by_name
 		logger.info(f"Finding duplicates by name in {new_dir}...")
 		
 		# Find and optionally remove duplicates by name
@@ -646,9 +646,9 @@ def main():
 		
 		return 0
 	
-	# Find duplicates only if requested
+	# Find duplicates if requested
 	if args.find_duplicates_only:
-		from utils.image_utils import find_duplicates
+		from src.utils.image_utils import find_duplicates
 		logger.info(f"Finding duplicates in {new_dir}...")
 		duplicates = find_duplicates(new_dir, args.similarity)
 		if duplicates:
