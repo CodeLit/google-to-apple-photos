@@ -1,6 +1,7 @@
 /new
 /old
 .DS_Store
+*.csv
 
 ### PhpStorm template
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
