@@ -79,6 +79,87 @@ def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
 			# Invalid date
 			pass
 	
+	# Match YYYYMMDD_HHMMSS pattern (e.g., 20210307_231552.jpg)
+	date_time_compact_match = re.match(r'([0-9]{8})_([0-9]{6}).*\..+', filename)
+	if date_time_compact_match:
+		date_str = date_time_compact_match.group(1)  # YYYYMMDD
+		time_str = date_time_compact_match.group(2)  # HHMMSS
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y%m%d %H%M%S')
+			
+			# Return formatted date string (YYYY:MM:DD)
+			year = date_str[0:4]
+			month = date_str[4:6]
+			day = date_str[6:8]
+			return f"{year}:{month}:{day}", "YYYYMMDD_HHMMSS pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
+	# Match WhatsApp pattern (e.g., IMG-20210307-WA0001.jpg)
+	whatsapp_match = re.match(r'(?:IMG|VID)-([0-9]{4})([0-9]{2})([0-9]{2})-WA[0-9]+\..+', filename, re.IGNORECASE)
+	if whatsapp_match:
+		year = whatsapp_match.group(1)
+		month = whatsapp_match.group(2)
+		day = whatsapp_match.group(3)
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			datetime(int(year), int(month), int(day))
+			
+			# Return formatted date string
+			return f"{year}:{month}:{day}", "WhatsApp pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
+	# Match Screenshot pattern (e.g., Screenshot_20210307-231552.jpg)
+	screenshot_match = re.match(r'Screenshot_([0-9]{8})-([0-9]{6}).*\..+', filename, re.IGNORECASE)
+	if screenshot_match:
+		date_str = screenshot_match.group(1)  # YYYYMMDD
+		time_str = screenshot_match.group(2)  # HHMMSS
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y%m%d %H%M%S')
+			
+			# Return formatted date string (YYYY:MM:DD)
+			year = date_str[0:4]
+			month = date_str[4:6]
+			day = date_str[6:8]
+			return f"{year}:{month}:{day}", "Screenshot pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
+	# Match Google Takeout IMG pattern (e.g., IMG20210503102138.jpg or IMG20210503102004_06.jpg)
+	google_img_match = re.match(r'(?:IMG|VID)([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})(?:_[0-9]+)?\..+', filename, re.IGNORECASE)
+	if google_img_match:
+		year = google_img_match.group(1)
+		month = google_img_match.group(2)
+		day = google_img_match.group(3)
+		time_str = google_img_match.group(4)  # HHMMSS
+		
+		# Validate date components
+		try:
+			# Check if it's a valid date
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{year}{month}{day} {time_str}", '%Y%m%d %H%M%S')
+			
+			# Return formatted date string
+			return f"{year}:{month}:{day}", "Google Takeout pattern"
+		except ValueError:
+			# Invalid date
+			pass
+	
 	return None
 
 
