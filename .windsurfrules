@@ -14,6 +14,9 @@ Write a script that processes metadata of photos and videos exported from Apple 
 
 - `./old`: Read-only. Contains original files from Google Takeout and their corresponding `.json` metadata files.
 - `./new`: Contains Apple Photos media files to be updated. Some may have incorrect or missing metadata.
+- `./src`: Source code for the script.
+- `./logs`: Log files for the script.
+- `./tests`: Test files for the script.
 
 ## Rules
 

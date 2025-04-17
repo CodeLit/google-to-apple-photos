@@ -492,6 +492,8 @@ def main():
 	parser.add_argument('--name-duplicates-log', default='name_duplicates.log', help='Log file for name-based duplicates (default: name_duplicates.log)')
 	parser.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
 	parser.add_argument('--status-log', default='metadata_status.log', help='Log file for metadata status (default: metadata_status.log)')
+	parser.add_argument('--import-to-photos', action='store_true', help='Import photos to Apple Photos after fixing metadata')
+	parser.add_argument('--import-with-albums', action='store_true', help='Import photos to Apple Photos and organize them into albums based on Google Takeout structure')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -741,7 +743,40 @@ def main():
 	
 	if success_count > 0:
 		logger.info("✅ Metadata synchronization completed successfully!")
-		logger.info("You can now import the files from the 'new' directory into Apple Photos.")
+		
+		# Import to Apple Photos if requested
+		if args.import_to_photos or args.import_with_albums:
+			from src.services.photos_app_service import PhotosAppService
+			
+			logger.info("Importing photos to Apple Photos...")
+			
+			if args.import_with_albums:
+				logger.info("Organizing photos into albums based on Google Takeout structure...")
+				imported, skipped = PhotosAppService.import_photos_from_directory(old_dir, with_albums=True)
+				logger.info(f"Import with albums complete. Imported: {imported}, Already in library: {skipped}")
+			else:
+				# Import processed files only
+				imported_count = 0
+				skipped_count = 0
+				processed_files = [pair[1] for pair in metadata_pairs]  # Get the new files that were processed
+				
+				for file_path in processed_files:
+					# Get timestamp from metadata if available
+					json_file = find_json_metadata(file_path, old_dir)
+					timestamp = ""
+					
+					if json_file:
+						timestamp = PhotosAppService.get_photo_timestamp(json_file)
+					
+					result = PhotosAppService.import_photo(file_path, timestamp)
+					if result:
+						skipped_count += 1
+					else:
+						imported_count += 1
+				
+				logger.info(f"Import complete. Imported: {imported_count}, Already in library: {skipped_count}")
+		else:
+			logger.info("You can now import the files from the 'new' directory into Apple Photos.")
 	else:
 		logger.warning("⚠️ No files were successfully updated.")
 	
