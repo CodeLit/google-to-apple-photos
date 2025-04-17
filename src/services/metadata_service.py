@@ -10,7 +10,7 @@ import concurrent.futures
 from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 
-from src.models.metadata import PhotoMetadata
+from src.models.metadata import PhotoMetadata, Metadata
 from src.utils.file_utils import get_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
 from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
 
@@ -29,6 +29,182 @@ failed_updates_logger.propagate = False  # Don't propagate to parent loggers
 
 class MetadataService:
 	"""Service for handling metadata operations"""
+	
+	@staticmethod
+	def extract_metadata_from_json(json_path: str) -> Optional[Metadata]:
+		"""
+		Extract metadata from a Google Takeout JSON file
+		
+		Args:
+			json_path: Path to the JSON file
+			
+		Returns:
+			Metadata object or None if extraction failed
+		"""
+		if not os.path.exists(json_path):
+			logger.error(f"JSON file not found: {json_path}")
+			return None
+		
+		try:
+			# Read the JSON file
+			with open(json_path, 'r', encoding='utf-8') as f:
+				json_data = json.load(f)
+			
+			# Extract metadata fields
+			title = json_data.get('title')
+			
+			# Extract date taken
+			date_taken = None
+			photo_taken_time = json_data.get('photoTakenTime')
+			if photo_taken_time and 'timestamp' in photo_taken_time:
+				timestamp = int(photo_taken_time['timestamp'])
+				date_obj = datetime.fromtimestamp(timestamp)
+				date_taken = date_obj.strftime('%Y:%m:%d %H:%M:%S')
+			
+			# Extract GPS coordinates
+			latitude = None
+			longitude = None
+			geo_data = json_data.get('geoData')
+			if geo_data:
+				latitude = geo_data.get('latitude')
+				longitude = geo_data.get('longitude')
+			
+			# Create and return metadata object
+			return Metadata(
+				title=title,
+				date_taken=date_taken,
+				latitude=latitude,
+				longitude=longitude
+			)
+			
+		except json.JSONDecodeError:
+			logger.error(f"Invalid JSON format in file: {json_path}")
+			return None
+		except Exception as e:
+			logger.error(f"Error extracting metadata from {json_path}: {str(e)}")
+			return None
+	
+	@staticmethod
+	def find_matching_file(json_path: str, target_dir: str) -> Optional[str]:
+		"""
+		Find a matching file in the target directory for a given JSON metadata file
+		
+		Args:
+			json_path: Path to the JSON metadata file
+			target_dir: Directory to search for matching files
+			
+		Returns:
+			Path to the matching file or None if no match found
+		"""
+		if not os.path.exists(json_path):
+			logger.error(f"JSON file not found: {json_path}")
+			return None
+		
+		if not os.path.exists(target_dir):
+			logger.error(f"Target directory not found: {target_dir}")
+			return None
+		
+		try:
+			# Get the base filename from the JSON path
+			json_filename = os.path.basename(json_path)
+			
+			# Handle supplemental metadata files
+			if json_filename.endswith('.supplemental-metadata.json'):
+				base_name = json_filename.replace('.supplemental-metadata.json', '')
+			elif json_filename.endswith('.json'):
+				base_name = get_base_filename(json_filename)
+			else:
+				logger.warning(f"Unexpected JSON filename format: {json_filename}")
+				return None
+			
+			# Look for exact filename match first
+			for file in os.listdir(target_dir):
+				if not os.path.isfile(os.path.join(target_dir, file)):
+					continue
+				
+				# Skip non-media files
+				if not is_media_file(file):
+					continue
+				
+				# Check for exact match
+				if get_base_filename(file) == base_name:
+					return os.path.join(target_dir, file)
+				
+				# Check for duplicate filenames (with suffixes like '(1)')
+				if are_duplicate_filenames(get_base_filename(file), base_name):
+					return os.path.join(target_dir, file)
+			
+			# If no exact match, try image hash matching
+			# Extract the original file path from the JSON directory
+			orig_dir = os.path.dirname(json_path)
+			potential_orig_files = [f for f in os.listdir(orig_dir) 
+								if is_media_file(f) and get_base_filename(f) == base_name]
+			
+			if potential_orig_files:
+				orig_file = os.path.join(orig_dir, potential_orig_files[0])
+				matching_file = find_matching_file_by_hash(orig_file, target_dir)
+				if matching_file:
+					return matching_file
+			
+			return None
+			
+		except Exception as e:
+			logger.error(f"Error finding matching file for {json_path}: {str(e)}")
+			return None
+	
+	@staticmethod
+	def find_metadata_pairs(old_dir: str, new_dir: str) -> List[Tuple[str, str]]:
+		"""
+		Find pairs of JSON metadata files and their matching media files
+		
+		Args:
+			old_dir: Directory containing Google Takeout files (JSON metadata and original media)
+			new_dir: Directory containing Apple Photos exports to be updated
+			
+		Returns:
+			List of tuples (json_path, matching_file_path)
+		"""
+		if not os.path.exists(old_dir):
+			logger.error(f"Old directory not found: {old_dir}")
+			return []
+		
+		if not os.path.exists(new_dir):
+			logger.error(f"New directory not found: {new_dir}")
+			return []
+		
+		try:
+			# Find all JSON files in the old directory
+			json_files = []
+			for root, _, files in os.walk(old_dir):
+				for file in files:
+					if file.endswith('.json') or file.endswith('.supplemental-metadata.json'):
+						json_files.append(os.path.join(root, file))
+			
+			logger.info(f"Found {len(json_files)} JSON files in {old_dir}")
+			
+			# Cache files in the new directory for faster matching
+			logger.info(f"Caching files in {new_dir} for faster matching...")
+			new_files = []
+			for root, _, files in os.walk(new_dir):
+				for file in files:
+					if is_media_file(file):
+						new_files.append(os.path.join(root, file))
+			
+			logger.info(f"Found {len(new_files)} media files in the new directory")
+			
+			# Find matching pairs
+			pairs = []
+			for json_path in json_files:
+				matching_file = MetadataService.find_matching_file(json_path, new_dir)
+				if matching_file:
+					pairs.append((json_path, matching_file))
+			
+			logger.info(f"Found {len(pairs)} matching pairs between JSON metadata and media files")
+			return pairs
+			
+		except Exception as e:
+			logger.error(f"Error finding metadata pairs: {str(e)}")
+			return []
 	
 	@staticmethod
 	def extract_metadata_from_filename(file_path: str) -> Optional[PhotoMetadata]:

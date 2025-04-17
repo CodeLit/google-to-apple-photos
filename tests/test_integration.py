@@ -52,10 +52,18 @@ class TestIntegration(unittest.TestCase):
 		
 		# Create a test photo and its metadata in the old directory
 		self.test_photo_name = "IMG_1234.jpg"
+		
+		# Create a JSON file in the format that find_metadata_pairs expects
 		self.json_path = os.path.join(self.old_dir, self.test_photo_name + ".json")
 		with open(self.json_path, 'w') as f:
 			json.dump(self.test_json, f)
 		
+		# Create a supplemental metadata JSON file as well (for better compatibility)
+		self.supplemental_json_path = os.path.join(self.old_dir, self.test_photo_name + ".supplemental-metadata.json")
+		with open(self.supplemental_json_path, 'w') as f:
+			json.dump(self.test_json, f)
+		
+		# Create the original photo in the old directory
 		self.old_photo_path = os.path.join(self.old_dir, self.test_photo_name)
 		with open(self.old_photo_path, 'wb') as f:
 			f.write(b"test photo content")
