@@ -59,3 +59,15 @@ The user will manually re-import the corrected files from `./new` into Apple Pho
 ## Comments
 
 - Write short comments to clarify complex logic, but avoid excessive commenting.
+
+## Test Setup
+
+- Tests use a dedicated `test_images` folder in the root directory (not tests/test_images)
+- The test requires Pillow and imagehash libraries for optimal image matching
+- To run tests:
+  1. Activate the virtual environment: `source .venv/bin/activate`
+  2. Run the test: `python -m tests.test_metadata_workflow`
+- The test copies sample files from the old directory to test_images/old
+- It applies metadata from JSON files to images in test_images/new
+- It verifies that metadata was correctly applied
+- Current test uses real HEIC files from Google Takeout data

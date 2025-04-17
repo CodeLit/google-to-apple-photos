@@ -1,6 +1,7 @@
 /new
 /old
 /archive
+/test_images
 .DS_Store
 *.csv
 
