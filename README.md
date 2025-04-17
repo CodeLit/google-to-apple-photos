@@ -13,6 +13,8 @@ Fix incorrect photo and video metadata (especially dates, GPS coordinates, and t
 - **Detailed Logging**: Track all processed files and their metadata changes, including errors for failed updates
 - **Parallel Processing**: Optimize performance with multi-threaded operations
 - **Configurable Options**: Customize the synchronization process to fit your needs
+- **Direct Apple Photos Import**: Import photos directly into Apple Photos after fixing metadata
+- **Album Organization**: Preserve album structure from Google Takeout when importing to Apple Photos
 
 Perfect for anyone migrating their photo library from Google Photos to Apple Photos who wants to preserve original metadata.
 
@@ -49,6 +51,26 @@ Perfect for anyone migrating their photo library from Google Photos to Apple Pho
    python3 main.py
    ```
 6. **Re-import into Apple Photos**  
+   You can either manually import the files into Apple Photos, or use the built-in import feature:
+   ```bash
+   # Import photos after fixing metadata
+   python3 main.py --import-to-photos
+   
+   # Import photos and organize them into albums based on Google Takeout structure
+   python3 main.py --import-with-albums
+   ```
+   
+   Alternatively, you can use the standalone import script:
+   ```bash
+   # Import all photos from the old directory
+   python3 import_to_photos.py
+   
+   # Import with album organization
+   python3 import_to_photos.py --with-albums
+   
+   # Import a specific file
+   python3 import_to_photos.py --specific-file new/photo.jpg
+   ```
    Import updated files from `./new` back into **Apple Photos**.  
    Apple Photos will read and use the corrected metadata during import.
 

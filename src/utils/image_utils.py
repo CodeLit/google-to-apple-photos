@@ -37,6 +37,51 @@ def is_media_file(file_path: str) -> bool:
 	"""Check if a file is a media file (image or video)"""
 	return is_image_file(file_path) or is_video_file(file_path)
 
+def is_uuid_filename(filename: str) -> bool:
+	"""Check if a filename follows the UUID pattern
+	
+	Args:
+		filename: Filename to check
+		
+	Returns:
+		True if the filename follows the UUID pattern, False otherwise
+	"""
+	# UUID pattern: 8-4-4-4-12 hexadecimal characters
+	import re
+	# Extract the base name without extension
+	base_name = os.path.splitext(os.path.basename(filename))[0]
+	# UUID pattern regex
+	uuid_pattern = r'^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'
+	return bool(re.match(uuid_pattern, base_name, re.IGNORECASE))
+
+def are_duplicate_filenames(filename1: str, filename2: str) -> bool:
+	"""Check if two filenames are potential duplicates
+	
+	Args:
+		filename1: First filename
+		filename2: Second filename
+		
+	Returns:
+		True if the filenames are potential duplicates, False otherwise
+	"""
+	# Get base names without extensions
+	base1 = os.path.splitext(os.path.basename(filename1))[0]
+	base2 = os.path.splitext(os.path.basename(filename2))[0]
+	
+	# Check if one filename is a suffix version of the other
+	# e.g., IMG_1234.jpg and IMG_1234 (1).jpg
+	import re
+	suffix_pattern = r'^(.+?)(?:\s*\(\d+\))?$'
+	match1 = re.match(suffix_pattern, base1)
+	match2 = re.match(suffix_pattern, base2)
+	
+	if match1 and match2:
+		root1 = match1.group(1)
+		root2 = match2.group(1)
+		return root1 == root2
+	
+	return False
+
 def compute_image_hash(image_path: str, hash_size: int = 8) -> Optional[str]:
 	"""
 	Compute perceptual hash for an image.
@@ -256,7 +301,7 @@ def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'metadat
 	return len(new_files), len(files_with_metadata), len(files_without_metadata)
 
 
-def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'name_duplicates.log') -> Tuple[int, int]:
+def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'logs/name_duplicates.log') -> Tuple[int, int]:
 	"""
 	Find duplicates by checking for files with the same base name but with a suffix,
 	and optionally remove the duplicates with the suffix
@@ -295,6 +340,11 @@ def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool 
 	logger.info(f"Confirmed {len(confirmed_duplicates)} duplicate pairs by file size")
 	
 	# Write to log file
+	# Create logs directory if it doesn't exist
+	logs_dir = os.path.dirname(duplicates_log)
+	if not os.path.exists(logs_dir):
+		os.makedirs(logs_dir)
+	
 	with open(duplicates_log, 'w') as f:
 		f.write("original_file,duplicate_file\n")
 		for original, duplicate in confirmed_duplicates.items():
@@ -323,7 +373,7 @@ def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool 
 	return len(confirmed_duplicates), removed
 
 
-def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log') -> Dict[str, List[str]]:
+def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'logs/duplicates.log') -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
 	Uses parallel processing and optimized algorithms for faster performance.
@@ -565,7 +615,7 @@ def rename_files_remove_suffix(directory: str, suffix: str = ' (1)', dry_run: bo
 	logger.info(f"Renaming complete. Processed {processed} files, renamed {renamed} files")
 	return processed, renamed
 
-def remove_duplicates(duplicates_log_path: str, dry_run: bool = False) -> Tuple[int, int]:
+def remove_duplicates(duplicates_log_path: str = 'logs/duplicates.log', dry_run: bool = False) -> Tuple[int, int]:
 	"""
 	Remove duplicate files based on the duplicates log file
 	

@@ -7,7 +7,6 @@ Write a script that processes metadata of photos and videos exported from Apple 
 ## Constraints
 
 - Use English for all code, comments, and output.
-- Python 3 only. Use `pip3` to install any dependencies.
 - Use `exiftool` or an equivalent method to modify file metadata.
 
 ## Folder Structure

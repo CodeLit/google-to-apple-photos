@@ -7,6 +7,36 @@ from typing import Optional, Dict, Any, List
 
 
 @dataclass
+class Metadata:
+	"""Simple metadata class for tests and integration"""
+	
+	title: Optional[str] = None
+	date_taken: Optional[str] = None
+	latitude: Optional[float] = None
+	longitude: Optional[float] = None
+	
+	def to_exiftool_args(self) -> List[str]:
+		"""Convert metadata to exiftool arguments"""
+		args = []
+		
+		if self.title:
+			args.append(f"-Title={self.title}")
+		
+		if self.date_taken:
+			args.append(f"-DateTimeOriginal={self.date_taken}")
+			args.append(f"-CreateDate={self.date_taken}")
+			args.append(f"-ModifyDate={self.date_taken}")
+		
+		if self.latitude is not None and self.longitude is not None:
+			args.append(f"-GPSLatitude={self.latitude}")
+			args.append(f"-GPSLongitude={self.longitude}")
+			args.append("-GPSLatitudeRef=N" if self.latitude >= 0 else "-GPSLatitudeRef=S")
+			args.append("-GPSLongitudeRef=E" if self.longitude >= 0 else "-GPSLongitudeRef=W")
+		
+		return args
+
+
+@dataclass
 class PhotoMetadata:
 	"""Represents metadata extracted from Google Takeout JSON files"""
 	

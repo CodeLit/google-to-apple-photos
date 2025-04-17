@@ -196,8 +196,13 @@ class MetadataService:
 		return files_without_metadata
 	
 	@staticmethod
-	def setup_processed_files_logger(log_file: str = 'processed_files.log', failed_updates_log: str = 'failed_updates.log'):
+	def setup_processed_files_logger(log_file: str = 'logs/processed_files.log', failed_updates_log: str = 'logs/failed_updates.log'):
 		"""Set up separate loggers for processed files and failed updates"""
+		# Create logs directory if it doesn't exist
+		logs_dir = os.path.dirname(log_file)
+		if not os.path.exists(logs_dir):
+			os.makedirs(logs_dir)
+		
 		# Set up processed files logger
 		if not processed_logger.handlers:
 			file_handler = logging.FileHandler(log_file, mode='w')

@@ -23,10 +23,14 @@ def get_base_filename(file_path: str) -> str:
 	# Handle edited files (filename(1).jpg)
 	edited_match = re.match(r'(.+)(\(\d+\))(\..+)', filename)
 	if edited_match:
-		return edited_match.group(1)
+		return edited_match.group(1).strip()
 	
-	# Regular case
-	return os.path.splitext(filename)[0]
+	# Handle multiple extensions (e.g., file.jpg.json)
+	base = os.path.splitext(filename)[0]
+	while '.' in base:
+		base = os.path.splitext(base)[0]
+	
+	return base.strip()
 
 
 def is_uuid_filename(filename: str) -> bool:
