@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 class PhotosAppService:
 	"""Service for interacting with Apple Photos application"""
 	
-	# AppleScript templates for interacting with Photos app
-	ADD_PHOTO_SCRIPT = """
+	# Common AppleScript functions
+	UNIX_DATE_FUNCTION = """
 	on unixDate(datetime)
 		set command to "date -j -f '%A, %B %e, %Y at %I:%M:%S %p' '" & datetime & "'"
 		set command to command & " +%s"
@@ -21,6 +21,10 @@ class PhotosAppService:
 		set theUnixDate to do shell script command
 		return theUnixDate
 	end unixDate
+	"""
+	
+	# AppleScript templates for interacting with Photos app
+	ADD_PHOTO_SCRIPT = UNIX_DATE_FUNCTION + """
 	on run {image_path, image_filename, image_timestamp, image_size}
 		tell application "Photos"
 			set images to search for image_filename
@@ -42,14 +46,7 @@ class PhotosAppService:
 	end run
 	"""
 	
-	ADD_PHOTO_TO_ALBUM_SCRIPT = """
-	on unixDate(datetime)
-		set command to "date -j -f '%A, %B %e, %Y at %I:%M:%S %p' '" & datetime & "'"
-		set command to command & " +%s"
-
-		set theUnixDate to do shell script command
-		return theUnixDate
-	end unixDate
+	ADD_PHOTO_TO_ALBUM_SCRIPT = UNIX_DATE_FUNCTION + """
 	on run {albumName, image_path, image_filename, image_timestamp, image_size}
 		tell application "Photos"
 			if not (exists album named albumName) then
@@ -80,6 +77,33 @@ class PhotosAppService:
 	PROGRESS_FILE = "photos_import_progress.json"
 	
 	@staticmethod
+	def _run_applescript(script: str, args: List[str], error_prefix: str = "Error") -> str:
+		"""
+		Run an AppleScript with the given arguments
+		
+		Args:
+			script: The AppleScript to run
+			args: The arguments to pass to the script
+			error_prefix: Prefix for error messages
+			
+		Returns:
+			The output of the script (trimmed)
+		"""
+		process = subprocess.Popen(
+			["osascript", "-"] + args, 
+			stdin=subprocess.PIPE, 
+			stdout=subprocess.PIPE, 
+			stderr=subprocess.PIPE
+		)
+		
+		stdout, stderr = process.communicate(script.encode("utf-8"))
+		
+		if stderr:
+			logger.error(f"{error_prefix}: {stderr.decode('utf-8')}")
+			
+		return stdout.decode("utf-8").strip()
+	
+	@staticmethod
 	def import_photo(image_path: str, timestamp: str = "") -> str:
 		"""
 		Import a photo into Apple Photos
@@ -99,19 +123,12 @@ class PhotosAppService:
 		image_size = os.path.getsize(image_path)
 		
 		args = [image_path, image_filename, timestamp, str(image_size)]
-		process = subprocess.Popen(
-			["osascript", "-"] + args, 
-			stdin=subprocess.PIPE, 
-			stdout=subprocess.PIPE, 
-			stderr=subprocess.PIPE
+		result = PhotosAppService._run_applescript(
+			PhotosAppService.ADD_PHOTO_SCRIPT,
+			args,
+			"Error importing photo"
 		)
 		
-		stdout, stderr = process.communicate(PhotosAppService.ADD_PHOTO_SCRIPT.encode("utf-8"))
-		
-		if stderr:
-			logger.error(f"Error importing photo: {stderr.decode('utf-8')}")
-			
-		result = stdout.decode("utf-8").strip()
 		if result:
 			logger.info(f"Photo already exists in library: {image_filename}")
 		else:
@@ -140,19 +157,12 @@ class PhotosAppService:
 		image_size = os.path.getsize(image_path)
 		
 		args = [album_name, image_path, image_filename, timestamp, str(image_size)]
-		process = subprocess.Popen(
-			["osascript", "-"] + args, 
-			stdin=subprocess.PIPE, 
-			stdout=subprocess.PIPE, 
-			stderr=subprocess.PIPE
+		result = PhotosAppService._run_applescript(
+			PhotosAppService.ADD_PHOTO_TO_ALBUM_SCRIPT,
+			args,
+			"Error importing photo to album"
 		)
 		
-		stdout, stderr = process.communicate(PhotosAppService.ADD_PHOTO_TO_ALBUM_SCRIPT.encode("utf-8"))
-		
-		if stderr:
-			logger.error(f"Error importing photo to album: {stderr.decode('utf-8')}")
-			
-		result = stdout.decode("utf-8").strip()
 		if result:
 			logger.info(f"Photo {image_filename} already exists in album: {album_name}")
 		else:
