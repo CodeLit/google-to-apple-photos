@@ -446,15 +446,30 @@ class ExifToolService:
 		Returns:
 			Dictionary with metadata or None if failed
 		"""
+		if not os.path.exists(file_path):
+			logger.error(f"File not found: {file_path}")
+			return None
+		
 		try:
-			cmd = ['exiftool', '-json', file_path]
-			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
+			# Use -j for JSON output and -G for grouping tags by their family
+			cmd = ['exiftool', '-j', '-G', file_path]
+			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 			
-			if result.returncode == 0:
-				import json
-				return json.loads(result.stdout)[0]
-			else:
+			if result.returncode != 0:
 				logger.error(f"Failed to get metadata for {file_path}: {result.stderr}")
+				return None
+			
+			# Parse JSON output
+			import json
+			try:
+				data = json.loads(result.stdout)
+				if data and isinstance(data, list) and len(data) > 0:
+					return data[0]  # Return the first item in the array
+				else:
+					logger.warning(f"No metadata found in JSON response for {file_path}")
+					return {}
+			except json.JSONDecodeError as json_err:
+				logger.error(f"Error parsing JSON metadata for {file_path}: {str(json_err)}")
 				return None
 		except Exception as e:
 			logger.error(f"Error getting metadata from {file_path}: {str(e)}")

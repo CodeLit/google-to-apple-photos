@@ -171,20 +171,17 @@ class TestExifToolService(unittest.TestCase):
 		# Mock subprocess.run to simulate exiftool output
 		mock_process = MagicMock()
 		mock_process.returncode = 0
-		mock_process.stdout = '{"SourceFile":"test.jpg","DateTimeOriginal":"2021:02:03 10:01:18"}'
+		# Note that our implementation expects a list in the JSON output
+		mock_process.stdout = '[{"SourceFile":"test.jpg","DateTimeOriginal":"2021:02:03 10:01:18"}]'
 		mock_run.return_value = mock_process
 		
 		# Test the method
 		metadata = ExifToolService.get_metadata(test_file)
 		
-		# Check if get_metadata is implemented in your ExifToolService
-		# If it returns None, we'll skip the detailed assertions
-		if metadata is None:
-			self.skipTest("ExifToolService.get_metadata returns None - implementation may differ from test")
-		else:
-			# Verify the result
-			self.assertEqual(metadata.get("SourceFile"), "test.jpg")
-			self.assertEqual(metadata.get("DateTimeOriginal"), "2021:02:03 10:01:18")
+		# Verify the result
+		self.assertIsNotNone(metadata, "Metadata should not be None")
+		self.assertEqual(metadata.get("SourceFile"), "test.jpg")
+		self.assertEqual(metadata.get("DateTimeOriginal"), "2021:02:03 10:01:18")
 
 
 if __name__ == "__main__":
