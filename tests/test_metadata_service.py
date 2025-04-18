@@ -231,5 +231,185 @@ class TestMetadataService(unittest.TestCase):
 			self.skipTest(f"Error in find_matching_file: {str(e)}")
 
 
+	def test_find_metadata_pairs_with_supplemental(self):
+		"""Test finding metadata pairs with supplemental metadata files"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'find_metadata_pairs'):
+			self.skipTest("MetadataService.find_metadata_pairs not implemented")
+		
+		# Create a supplemental metadata file
+		supplemental_json_path = os.path.join(self.old_dir, self.test_photo_name + ".supplemental-metadata.json")
+		with open(supplemental_json_path, 'w') as f:
+			json.dump(self.test_json, f)
+		
+		# Run the function
+		pairs = MetadataService.find_metadata_pairs(self.old_dir, self.new_dir)
+		
+		# Verify that we got a list of pairs
+		self.assertIsInstance(pairs, list)
+		self.assertGreater(len(pairs), 0)
+		
+		# Verify the structure of the pairs
+		for json_path, media_path in pairs:
+			self.assertTrue(os.path.exists(json_path))
+			self.assertTrue(os.path.exists(media_path))
+
+	def test_find_metadata_pairs_empty_directories(self):
+		"""Test finding metadata pairs with empty directories"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'find_metadata_pairs'):
+			self.skipTest("MetadataService.find_metadata_pairs not implemented")
+		
+		# Create empty directories
+		empty_old_dir = os.path.join(self.test_dir, "empty_old")
+		empty_new_dir = os.path.join(self.test_dir, "empty_new")
+		os.makedirs(empty_old_dir, exist_ok=True)
+		os.makedirs(empty_new_dir, exist_ok=True)
+		
+		# Run the function
+		pairs = MetadataService.find_metadata_pairs(empty_old_dir, empty_new_dir)
+		
+		# Verify that we got an empty list
+		self.assertIsInstance(pairs, list)
+		self.assertEqual(len(pairs), 0)
+
+	@patch('src.services.metadata_service.MetadataService.extract_metadata_from_json')
+	def test_apply_metadata_to_file(self, mock_extract):
+		"""Test applying metadata to a file"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'apply_metadata_to_file'):
+			self.skipTest("MetadataService.apply_metadata_to_file not implemented")
+		
+		# Mock the extract_metadata_from_json method
+		mock_metadata = Metadata(
+			title="Test Photo",
+			date_taken="2021:02:03 10:01:18",
+			latitude=37.7749,
+			longitude=-122.4194
+		)
+		mock_extract.return_value = mock_metadata
+		
+		# Mock ExifToolService.apply_metadata
+		with patch('src.services.exiftool_service.ExifToolService.apply_metadata') as mock_apply:
+			mock_apply.return_value = True
+			
+			# Run the function
+			result = MetadataService.apply_metadata_to_file(self.json_path, self.new_photo_path)
+			
+			# Verify that the function returned True
+			self.assertTrue(result)
+			
+			# Verify that ExifToolService.apply_metadata was called
+			mock_apply.assert_called_once()
+
+	@patch('src.services.metadata_service.MetadataService.extract_metadata_from_json')
+	def test_apply_metadata_to_file_no_metadata(self, mock_extract):
+		"""Test applying metadata to a file when no metadata is found"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'apply_metadata_to_file'):
+			self.skipTest("MetadataService.apply_metadata_to_file not implemented")
+		
+		# Mock the extract_metadata_from_json method to return None
+		mock_extract.return_value = None
+		
+		# Run the function
+		result = MetadataService.apply_metadata_to_file(self.json_path, self.new_photo_path)
+		
+		# Verify that the function returned False
+		self.assertFalse(result)
+
+	def test_process_metadata_pairs(self):
+		"""Test processing metadata pairs"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'process_metadata_pairs'):
+			self.skipTest("MetadataService.process_metadata_pairs not implemented")
+		
+		# Create a list of pairs
+		pairs = [(self.json_path, self.new_photo_path)]
+		
+		# Mock apply_metadata_to_file
+		with patch('src.services.metadata_service.MetadataService.apply_metadata_to_file') as mock_apply:
+			mock_apply.return_value = True
+			
+			# Run the function
+			processed, successful = MetadataService.process_metadata_pairs(pairs)
+			
+			# Verify the results
+			self.assertEqual(processed, 1)
+			self.assertEqual(successful, 1)
+			
+			# Verify that apply_metadata_to_file was called
+			mock_apply.assert_called_once_with(self.json_path, self.new_photo_path)
+
+	def test_process_metadata_pairs_with_errors(self):
+		"""Test processing metadata pairs with errors"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'process_metadata_pairs'):
+			self.skipTest("MetadataService.process_metadata_pairs not implemented")
+		
+		# Create a list of pairs
+		pairs = [(self.json_path, self.new_photo_path)]
+		
+		# Mock apply_metadata_to_file to return False (error)
+		with patch('src.services.metadata_service.MetadataService.apply_metadata_to_file') as mock_apply:
+			mock_apply.return_value = False
+			
+			# Run the function
+			processed, successful = MetadataService.process_metadata_pairs(pairs)
+			
+			# Verify the results
+			self.assertEqual(processed, 1)
+			self.assertEqual(successful, 0)
+
+	def test_find_matching_file(self):
+		"""Test finding a matching file"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'find_matching_file'):
+			self.skipTest("MetadataService.find_matching_file not implemented")
+		
+		# Run the function
+		matching_file = MetadataService.find_matching_file(self.json_path, self.new_dir)
+		
+		# Verify that it found the matching file
+		self.assertEqual(matching_file, self.new_photo_path)
+
+	def test_find_matching_file_no_match(self):
+		"""Test finding a matching file when no match exists"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'find_matching_file'):
+			self.skipTest("MetadataService.find_matching_file not implemented")
+		
+		# Create a JSON file with no matching media file
+		no_match_json_path = os.path.join(self.old_dir, "no_match.json")
+		with open(no_match_json_path, 'w') as f:
+			json.dump(self.test_json, f)
+		
+		# Run the function
+		matching_file = MetadataService.find_matching_file(no_match_json_path, self.new_dir)
+		
+		# Verify that it didn't find a match
+		self.assertIsNone(matching_file)
+
+	def test_sync_metadata(self):
+		"""Test syncing metadata between directories"""
+		# Skip this test if the method doesn't exist
+		if not hasattr(MetadataService, 'sync_metadata'):
+			self.skipTest("MetadataService.sync_metadata not implemented")
+		
+		# Mock find_metadata_pairs and process_metadata_pairs
+		with patch('src.services.metadata_service.MetadataService.find_metadata_pairs') as mock_find:
+			mock_find.return_value = [(self.json_path, self.new_photo_path)]
+			
+			with patch('src.services.metadata_service.MetadataService.process_metadata_pairs') as mock_process:
+				mock_process.return_value = (1, 1)
+				
+				# Run the function
+				total, processed, successful = MetadataService.sync_metadata(self.old_dir, self.new_dir)
+				
+				# Verify the results
+				self.assertEqual(total, 1)
+				self.assertEqual(processed, 1)
+				self.assertEqual(successful, 1)
+
 if __name__ == "__main__":
 	unittest.main()
