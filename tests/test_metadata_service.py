@@ -231,7 +231,8 @@ class TestMetadataService(unittest.TestCase):
 			self.skipTest(f"Error in find_matching_file: {str(e)}")
 
 
-	def test_find_metadata_pairs_with_supplemental(self):
+	@patch('src.utils.image_utils.compute_hash_for_file')
+	def test_find_metadata_pairs_with_supplemental(self, mock_compute_hash):
 		"""Test finding metadata pairs with supplemental metadata files"""
 		# Skip this test if the method doesn't exist
 		if not hasattr(MetadataService, 'find_metadata_pairs'):
@@ -242,6 +243,9 @@ class TestMetadataService(unittest.TestCase):
 		with open(supplemental_json_path, 'w') as f:
 			json.dump(self.test_json, f)
 		
+		# Mock the hash computation to avoid actual file processing
+		mock_compute_hash.return_value = "test-hash-123"
+		
 		# Run the function
 		pairs = MetadataService.find_metadata_pairs(self.old_dir, self.new_dir)
 		
@@ -249,8 +253,11 @@ class TestMetadataService(unittest.TestCase):
 		self.assertIsInstance(pairs, list)
 		self.assertGreater(len(pairs), 0)
 		
-		# Verify the structure of the pairs
-		for json_path, media_path in pairs:
+		# The pairs might be in the format (json_path, media_path, match_method, similarity)
+		# Extract just the first two elements for our test
+		for pair in pairs:
+			json_path = pair[0]  # First element is always the JSON path
+			media_path = pair[1]  # Second element is always the media path
 			self.assertTrue(os.path.exists(json_path))
 			self.assertTrue(os.path.exists(media_path))
 
