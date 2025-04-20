@@ -102,6 +102,12 @@ class ExifToolService:
 				
 				# Check that the copy was created successfully and has the correct size
 				if os.path.exists(new_path) and os.path.getsize(new_path) > 0:
+					# Remove the original file with incorrect extension
+					try:
+						os.remove(file_path)
+						logger.info(f"Removed original file with incorrect extension: {file_path}")
+					except Exception as e:
+						logger.warning(f"Could not remove original file {file_path}: {str(e)}")
 					return new_path
 				else:
 					logger.error(f"Failed to create valid copy with correct extension: {new_path}")
