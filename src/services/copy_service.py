@@ -53,32 +53,39 @@ class CopyService:
 		
 		logger.info(f"Found {len(new_files)} media files in {new_dir}")
 		
-		# Load hash cache
-		logger.info("Loading hash cache...")
-		hash_cache = load_image_hashes('data/image_hashes.csv')
-		logger.info(f"Loaded {len(hash_cache)} hashes from cache")
+		# Load hash caches for old and new directories
+		logger.info("Loading hash caches...")
+		old_hash_cache = load_image_hashes('data/old_image_hashes.csv')
+		logger.info(f"Loaded {len(old_hash_cache)} hashes from old cache")
+		
+		new_hash_cache = load_image_hashes('data/new_image_hashes.csv')
+		logger.info(f"Loaded {len(new_hash_cache)} hashes from new cache")
 		
 		# Compute hashes for files in new directory
 		logger.info("Computing hashes for files in new directory...")
 		new_file_hashes = {}
 		for i, file_path in enumerate(new_files):
-			file_hash = compute_hash_for_file(file_path, hash_cache)
+			# Use the new directory hash cache
+			file_hash = compute_hash_for_file(file_path, new_hash_cache)
 			if file_hash:
 				new_file_hashes[file_hash] = file_path
 			
 			# Log progress every 500 files
 			if (i + 1) % 500 == 0:
 				logger.info(f"Computed hashes for {i + 1}/{len(new_files)} files in new directory")
-				# Save hash cache periodically
-				save_image_hashes(hash_cache, 'data/image_hashes.csv')
+				# Save new hash cache periodically
+				save_image_hashes(new_hash_cache, 'data/new_image_hashes.csv')
 		
 		logger.info(f"Computed hashes for {len(new_file_hashes)} files in new directory")
+		# Save new hash cache
+		save_image_hashes(new_hash_cache, 'data/new_image_hashes.csv')
 		
 		# Find files that exist in old but not in new based on hash
 		logger.info("Finding missing files based on hash comparison...")
 		missing_files = []
 		for i, old_file in enumerate(old_files):
-			file_hash = compute_hash_for_file(old_file, hash_cache)
+			# Use the old directory hash cache
+			file_hash = compute_hash_for_file(old_file, old_hash_cache)
 			
 			# If we couldn't compute a hash or the hash doesn't exist in new directory
 			if not file_hash or file_hash not in new_file_hashes:
@@ -87,11 +94,11 @@ class CopyService:
 			# Log progress every 500 files
 			if (i + 1) % 500 == 0:
 				logger.info(f"Processed {i + 1}/{len(old_files)} files from old directory")
-				# Save hash cache periodically
-				save_image_hashes(hash_cache, 'data/image_hashes.csv')
+				# Save old hash cache periodically
+				save_image_hashes(old_hash_cache, 'data/old_image_hashes.csv')
 		
-		# Save final hash cache
-		save_image_hashes(hash_cache, 'data/image_hashes.csv')
+		# Save old hash cache
+		save_image_hashes(old_hash_cache, 'data/old_image_hashes.csv')
 		
 		logger.info(f"Found {len(missing_files)} files in {old_dir} that don't exist in {new_dir} based on hash comparison")
 		
