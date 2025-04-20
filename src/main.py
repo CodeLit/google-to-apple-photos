@@ -56,31 +56,33 @@ def find_json_metadata(file_path, old_dir):
 				f"{base_name_without_o.replace('IMG_', '')}.json"
 			]
 			
-			for json_name in possible_json_names:
-				json_path = os.path.join(old_dir, json_name)
-				if os.path.exists(json_path):
-					try:
-						with open(json_path, 'r') as f:
-							data = json.load(f)
-						
-						# Extract date taken
-						date_taken = None
-						if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
-							timestamp = int(data['photoTakenTime']['timestamp'])
-							date_taken = datetime.fromtimestamp(timestamp)
-						elif 'creationTime' in data and 'timestamp' in data['creationTime']:
-							timestamp = int(data['creationTime']['timestamp'])
-							date_taken = datetime.fromtimestamp(timestamp)
-						
-						if date_taken:
-							logger.info(f"Found metadata for AAE file {file_path} in {json_path}")
-							return {
-								'date_taken': date_taken,
-								'json_path': json_path,
-								'data': data
-							}
-					except Exception as e:
-						logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
+			# Recursively search for JSON files in old_dir and its subdirectories
+			for root, _, files in os.walk(old_dir):
+				for json_name in possible_json_names:
+					if json_name in files:
+						json_path = os.path.join(root, json_name)
+						try:
+							with open(json_path, 'r') as f:
+								data = json.load(f)
+							
+							# Extract date taken
+							date_taken = None
+							if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
+								timestamp = int(data['photoTakenTime']['timestamp'])
+								date_taken = datetime.fromtimestamp(timestamp)
+							elif 'creationTime' in data and 'timestamp' in data['creationTime']:
+								timestamp = int(data['creationTime']['timestamp'])
+								date_taken = datetime.fromtimestamp(timestamp)
+							
+							if date_taken:
+								logger.info(f"Found metadata for AAE file {file_path} in {json_path}")
+								return {
+									'date_taken': date_taken,
+									'json_path': json_path,
+									'data': data
+								}
+						except Exception as e:
+							logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
 	
 	# Try to extract date from filename patterns using the utility function
 	date_info = extract_date_from_filename(file_path)
@@ -157,31 +159,33 @@ def find_json_metadata(file_path, old_dir):
 		f"{name_without_ext.replace('(1)', '')}.json"
 	]
 	
-	for json_name in possible_json_names:
-		json_path = os.path.join(old_dir, json_name)
-		if os.path.exists(json_path):
-			try:
-				with open(json_path, 'r') as f:
-					data = json.load(f)
-				
-				# Extract date taken
-				date_taken = None
-				if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
-					timestamp = int(data['photoTakenTime']['timestamp'])
-					date_taken = datetime.fromtimestamp(timestamp)
-				elif 'creationTime' in data and 'timestamp' in data['creationTime']:
-					timestamp = int(data['creationTime']['timestamp'])
-					date_taken = datetime.fromtimestamp(timestamp)
-				
-				if date_taken:
-					logger.info(f"Found metadata for {file_path} in {json_path}")
-					return {
-						'date_taken': date_taken,
-						'json_path': json_path,
-						'data': data
-					}
-			except Exception as e:
-				logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
+	# Recursively search for JSON files in old_dir and its subdirectories
+	for root, _, files in os.walk(old_dir):
+		for json_name in possible_json_names:
+			if json_name in files:
+				json_path = os.path.join(root, json_name)
+				try:
+					with open(json_path, 'r') as f:
+						data = json.load(f)
+					
+					# Extract date taken
+					date_taken = None
+					if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
+						timestamp = int(data['photoTakenTime']['timestamp'])
+						date_taken = datetime.fromtimestamp(timestamp)
+					elif 'creationTime' in data and 'timestamp' in data['creationTime']:
+						timestamp = int(data['creationTime']['timestamp'])
+						date_taken = datetime.fromtimestamp(timestamp)
+					
+					if date_taken:
+						logger.info(f"Found metadata for {file_path} in {json_path}")
+						return {
+							'date_taken': date_taken,
+							'json_path': json_path,
+							'data': data
+						}
+				except Exception as e:
+					logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
 	
 	# If no metadata found, use file system timestamps as last resort
 	try:

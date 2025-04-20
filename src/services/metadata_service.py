@@ -117,22 +117,20 @@ class MetadataService:
 				logger.warning(f"Unexpected JSON filename format: {json_filename}")
 				return None
 
-			# Look for exact filename match first
-			for file in os.listdir(target_dir):
-				if not os.path.isfile(os.path.join(target_dir, file)):
-					continue
+			# Look for exact filename match first, recursively in all subdirectories
+			for root, _, files in os.walk(target_dir):
+				for file in files:
+					# Skip non-media files
+					if not is_media_file(file):
+						continue
 
-				# Skip non-media files
-				if not is_media_file(file):
-					continue
+					# Check for exact match
+					if get_base_filename(file) == base_name:
+						return os.path.join(root, file)
 
-				# Check for exact match
-				if get_base_filename(file) == base_name:
-					return os.path.join(target_dir, file)
-
-				# Check for duplicate filenames (with suffixes like '(1)')
-				if are_duplicate_filenames(get_base_filename(file), base_name):
-					return os.path.join(target_dir, file)
+					# Check for duplicate filenames (with suffixes like '(1)')
+					if are_duplicate_filenames(get_base_filename(file), base_name):
+						return os.path.join(root, file)
 
 			# If no exact match, try image hash matching
 			# Extract the original file path from the JSON directory
