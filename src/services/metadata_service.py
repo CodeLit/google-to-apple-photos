@@ -84,9 +84,25 @@ class MetadataService:
 			logger.error(f"Error extracting metadata from {json_path}: {str(e)}")
 			return None
 
-	# Class variable to store indexed files
+	# Class variables for caching
 	_indexed_files = {}
 	_indexed_directories = set()
+	_processed_files_logger = None
+	
+	@staticmethod
+	def _index_single_file(filename: str, full_path: str) -> Tuple[str, str, str]:
+		"""
+		Helper method for parallel file indexing
+		
+		Args:
+			filename: The filename to index
+			full_path: The full path to the file
+			
+		Returns:
+			Tuple of (base_name, filename, full_path)
+		"""
+		base_name = get_base_filename(filename)
+		return (base_name, filename, full_path)
 
 	@staticmethod
 	def index_files(directory: str) -> Dict[str, List[str]]:
@@ -107,30 +123,78 @@ class MetadataService:
 		indexed_files = {}
 		file_count = 0
 
-		for root, _, files in os.walk(directory):
-			for filename in files:
-				if is_media_file(filename):
-					file_count += 1
-					full_path = os.path.join(root, filename)
-					
-					# Store both the full filename and base filename as keys
+		# Use a more efficient approach with batch processing
+		try:
+			# First collect all files
+			media_files = []
+			for root, _, files in os.walk(directory):
+				for filename in files:
+					if is_media_file(filename):
+						full_path = os.path.join(root, filename)
+						media_files.append((filename, full_path))
+
+			file_count = len(media_files)
+			logger.info(f"Found {file_count} media files to index")
+
+			# Then process them in parallel for large collections
+			if file_count > 1000:
+				logger.info("Using parallel processing for indexing large collection")
+				with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+					futures = []
+					for filename, full_path in media_files:
+						futures.append(executor.submit(MetadataService._index_single_file, filename, full_path))
+
+					for future in concurrent.futures.as_completed(futures):
+						try:
+							base_name, filename, full_path = future.result()
+							# Add to index
+							base_name_lower = base_name.lower()
+							if base_name_lower not in indexed_files:
+								indexed_files[base_name_lower] = []
+							indexed_files[base_name_lower].append(full_path)
+
+							# Also add the filename without extension
+							filename_lower = os.path.splitext(filename)[0].lower()
+							if filename_lower not in indexed_files:
+								indexed_files[filename_lower] = []
+							indexed_files[filename_lower].append(full_path)
+						except Exception as e:
+							logger.error(f"Error indexing file: {str(e)}")
+			else:
+				# For smaller collections, process sequentially
+				for filename, full_path in media_files:
 					base_name = get_base_filename(filename)
-					if base_name not in indexed_files:
-						indexed_files[base_name] = []
-					indexed_files[base_name].append(full_path)
+					base_name_lower = base_name.lower()
+					
+					# Store with lowercase base name as key
+					if base_name_lower not in indexed_files:
+						indexed_files[base_name_lower] = []
+					indexed_files[base_name_lower].append(full_path)
 
-					# Also store with the full filename as key
-					if filename not in indexed_files:
-						indexed_files[filename] = []
-					indexed_files[filename].append(full_path)
+					# Also store with lowercase filename without extension
+					filename_lower = os.path.splitext(filename)[0].lower()
+					if filename_lower not in indexed_files:
+						indexed_files[filename_lower] = []
+					indexed_files[filename_lower].append(full_path)
 
-		logger.info(f"Indexed {file_count} files in {directory}")
-		
-		# Store in class variable for reuse
-		MetadataService._indexed_files = indexed_files
-		MetadataService._indexed_directories.add(directory)
-		
-		return indexed_files
+					# Also store cleaned name (without numbers in parentheses)
+					import re
+					clean_name = re.sub(r'\s*\(\d+\)$', '', base_name_lower)
+					if clean_name != base_name_lower:
+						if clean_name not in indexed_files:
+							indexed_files[clean_name] = []
+						indexed_files[clean_name].append(full_path)
+
+			logger.info(f"Indexed {file_count} files in {directory}")
+			
+			# Store in class variable for reuse
+			MetadataService._indexed_files = indexed_files
+			MetadataService._indexed_directories.add(directory)
+			
+			return indexed_files
+		except Exception as e:
+			logger.error(f"Error indexing files in {directory}: {str(e)}")
+			return {}
 
 	@staticmethod
 	def find_matching_file(json_path: str, target_dir: str) -> Optional[str]:
@@ -169,26 +233,24 @@ class MetadataService:
 				return None
 
 			# Look for exact filename match first using the index
-			if base_name in indexed_files and indexed_files[base_name]:
-				return indexed_files[base_name][0]  # Return the first match
+			base_name_lower = base_name.lower()
+			if base_name_lower in indexed_files and indexed_files[base_name_lower]:
+				return indexed_files[base_name_lower][0]  # Return the first match
 
 			# Check for duplicate filenames (with suffixes like '(1)')
+			# Also try with cleaned name (without numbers in parentheses)
+			import re
+			clean_name = re.sub(r'\s*\(\d+\)$', '', base_name_lower)
+			if clean_name != base_name_lower and clean_name in indexed_files and indexed_files[clean_name]:
+				return indexed_files[clean_name][0]  # Return the first match
+
+			# Try partial matching for filenames that might have been truncated
 			for indexed_base_name, file_paths in indexed_files.items():
-				if are_duplicate_filenames(indexed_base_name, base_name) and file_paths:
+				if (indexed_base_name.startswith(base_name_lower) or base_name_lower.startswith(indexed_base_name)) and file_paths:
 					return file_paths[0]  # Return the first match
 
-			# If no exact match, try image hash matching
-			# Extract the original file path from the JSON directory
-			orig_dir = os.path.dirname(json_path)
-			potential_orig_files = [f for f in os.listdir(orig_dir) 
-							if is_media_file(f) and get_base_filename(f) == base_name]
-
-			if potential_orig_files:
-				orig_file = os.path.join(orig_dir, potential_orig_files[0])
-				matching_file = find_matching_file_by_hash(orig_file, target_dir)
-				if matching_file:
-					return matching_file
-
+			# If no match found by name, log a warning
+			logger.warning(f"No matching file found for {base_name}")
 			return None
 
 		except Exception as e:
