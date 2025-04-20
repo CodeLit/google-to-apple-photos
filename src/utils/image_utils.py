@@ -899,20 +899,23 @@ def find_matching_file_by_hash(source_file: str, target_dir: str,
 		
 	return best_match
 
-def remove_duplicates(duplicates: Dict[str, List[str]], dry_run: bool = False) -> int:
+def remove_duplicates(duplicates: Dict[str, List[str]], dry_run: bool = False, force_remove_numbered: bool = True) -> int:
 	"""
-Remove duplicate files, keeping only the original file.
-Before removing, verifies that files have identical content by comparing hashes.
-
-Args:
-duplicates: Dictionary mapping original files to lists of duplicate files
-dry_run: If True, don't actually remove files, just log what would be done
-
-Returns:
-Number of files removed
-"""
+	Remove duplicate files, keeping only the original file.
+	Before removing, verifies that files have identical content by comparing hashes.
+	
+	Args:
+		duplicates: Dictionary mapping original files to lists of duplicate files
+		dry_run: If True, don't actually remove files, just log what would be done
+		force_remove_numbered: If True, remove files with numbered suffixes (e.g., ' (1)') even if hashes don't match
+		
+	Returns:
+		Number of files removed
+	"""
+	from src.utils.file_utils import get_base_filename
 	files_removed = 0
 	
+	# First pass: remove files with identical hashes
 	for original, duplicate_files in duplicates.items():
 		if not os.path.exists(original):
 			logger.warning(f"Original file does not exist: {original}")
@@ -949,5 +952,68 @@ Number of files removed
 					files_removed += 1
 			else:
 				logger.warning(f"Hash mismatch between {original} and {duplicate}, keeping both files")
+	
+	# Second pass: remove numbered duplicates even if hashes don't match
+	if force_remove_numbered:
+		# Get all media files
+		media_files = []
+		for root, _, files in os.walk(os.path.dirname(original)):
+			for file in files:
+				file_path = os.path.join(root, file)
+				if is_media_file(file_path):
+					media_files.append(file_path)
+		
+		# Group files by base name (without extension and number suffix)
+		base_name_groups = {}
+		for file_path in media_files:
+			base_name = get_base_filename(file_path)
+			if ' (' in base_name:
+				# Remove the numbered suffix
+				base_name = base_name.split(' (')[0]
+			
+			if base_name not in base_name_groups:
+				base_name_groups[base_name] = []
+			base_name_groups[base_name].append(file_path)
+		
+		# Process each group
+		for base_name, files in base_name_groups.items():
+			if len(files) <= 1:
+				continue  # Skip if only one file with this base name
+			
+			# Sort files: non-numbered first, then by extension preference (HEIC > JPG > PNG)
+			def sort_key(file_path):
+				filename = os.path.basename(file_path)
+				ext = os.path.splitext(filename)[1].lower()
+				
+				# Assign priority to extensions (lower is better)
+				ext_priority = {
+					'.heic': 1,
+					'.jpg': 2,
+					'.jpeg': 2,
+					'.png': 3,
+					'.mov': 1,
+					'.mp4': 2
+				}.get(ext, 10)
+				
+				# Check if file has a numbered suffix
+				has_number = ' (' in filename
+				
+				return (has_number, ext_priority)
+			
+			files.sort(key=sort_key)
+			
+			# Keep the first file, remove others
+			keep_file = files[0]
+			for file_path in files[1:]:
+				if not dry_run:
+					try:
+						os.remove(file_path)
+						logger.info(f"Removed numbered duplicate: {file_path} (keeping {keep_file})")
+						files_removed += 1
+					except Exception as e:
+						logger.error(f"Error removing numbered duplicate {file_path}: {str(e)}")
+				else:
+					logger.info(f"[DRY RUN] Would remove numbered duplicate: {file_path} (keeping {keep_file})")
+					files_removed += 1
 	
 	return files_removed
