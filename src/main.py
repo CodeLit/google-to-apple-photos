@@ -43,6 +43,7 @@ def find_json_metadata(file_path, old_dir):
 	"""
 	Find the corresponding JSON metadata file for a given file
 	"""
+	logger.debug(f"Looking for metadata for {os.path.basename(file_path)}")
 	base_name = os.path.basename(file_path)
 	name_without_ext = os.path.splitext(base_name)[0]
 	
@@ -325,7 +326,7 @@ def process_file(file_path, old_dir, dry_run=False, overwrite=False):
 	"""
 	Process a single file
 	"""
-	logger.info(f"Processing {file_path}")
+	logger.info(f"Processing {os.path.basename(file_path)}")
 	
 	# Find corresponding JSON metadata
 	metadata = find_json_metadata(file_path, old_dir)
@@ -358,13 +359,23 @@ def fix_metadata(args):
 		logger.error("ExifTool is not installed or not in PATH. Please install ExifTool.")
 		return 1
 	
+	# Get absolute paths for directories
+	script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+	old_dir = os.path.join(script_dir, args.old_dir) if not os.path.isabs(args.old_dir) else args.old_dir
+	new_dir = os.path.join(script_dir, args.new_dir) if not os.path.isabs(args.new_dir) else args.new_dir
+	
+	# Debug output for paths
+	logger.debug(f"Script directory: {script_dir}")
+	logger.debug(f"Old directory absolute path: {old_dir}")
+	logger.debug(f"New directory absolute path: {new_dir}")
+	
 	# Validate directories
-	if not os.path.isdir(args.old_dir):
-		logger.error(f"Old directory not found: {args.old_dir}")
+	if not os.path.isdir(old_dir):
+		logger.error(f"Old directory not found: {old_dir}")
 		return 1
 	
-	if not os.path.isdir(args.new_dir):
-		logger.error(f"New directory not found: {args.new_dir}")
+	if not os.path.isdir(new_dir):
+		logger.error(f"New directory not found: {new_dir}")
 		return 1
 	
 	# Find files to process
@@ -395,14 +406,21 @@ def fix_metadata(args):
 			return 1
 	elif args.extensions:
 		# Process specific file extensions
-		extensions = [f".{ext.lower().strip()}" for ext in args.extensions.split(',')]
+		extensions = [ext.lower().strip() for ext in args.extensions.split(',')]
+		logger.debug(f"Looking for files with extensions: {extensions}")
 		for ext in extensions:
-			for file_path in Path(args.new_dir).glob(f"*{ext}"):
-				files_to_process.append(str(file_path))
+			# Search for both lowercase and uppercase extensions
+			for pattern in [f"*.{ext}", f"*.{ext.upper()}"]:
+				logger.debug(f"Searching with pattern: {pattern} in directory {new_dir}")
+				count_before = len(files_to_process)
+				for file_path in Path(new_dir).glob(pattern):
+					files_to_process.append(str(file_path))
+				count_after = len(files_to_process)
+				logger.debug(f"Found {count_after - count_before} files with pattern {pattern}")
 		logger.info(f"Found {len(files_to_process)} files with extensions {args.extensions}")
 	else:
 		# Process all files
-		for file_path in Path(args.new_dir).glob("*.*"):
+		for file_path in Path(new_dir).glob("*.*"):
 			file_path_str = str(file_path)
 			# Skip XMP sidecar files and hidden files
 			if not file_path_str.endswith('.xmp') and not os.path.basename(file_path_str).startswith('.'):
@@ -428,12 +446,11 @@ def fix_metadata(args):
 		results_log.write("file_path,result,timestamp\n")
 	
 	for i, file_path in enumerate(files_to_process):
-		if (i + 1) % 10 == 0 or i + 1 == len(files_to_process):
-			logger.info(f"Progress: {i+1}/{len(files_to_process)} files processed")
+		logger.info(f"Processing file {i+1}/{len(files_to_process)}: {os.path.basename(file_path)}")
 		
 		try:
 			result = "failure"
-			if process_file(file_path, args.old_dir, args.dry_run, args.overwrite):
+			if process_file(file_path, old_dir, args.dry_run, args.overwrite):
 				success_count += 1
 				result = "success"
 			else:
