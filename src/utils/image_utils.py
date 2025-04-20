@@ -141,7 +141,59 @@ def compute_file_hash(file_path: str) -> Optional[str]:
 		logger.debug(f"Could not compute file hash for {file_path}: {str(e)}")
 		return None
 
-def compute_hash_for_file(file_path: str) -> Optional[str]:
+def load_image_hashes(hash_file: str = 'data/image_hashes.csv') -> Dict[str, str]:
+	"""
+	Load image hashes from a CSV file
+	
+	Args:
+		hash_file: Path to the CSV file containing image hashes
+		
+	Returns:
+		Dictionary mapping file paths to hash values
+	"""
+	hashes = {}
+	
+	try:
+		if os.path.exists(hash_file):
+			with open(hash_file, 'r', encoding='utf-8') as f:
+				reader = csv.reader(f)
+				# Skip header
+				next(reader, None)
+				for row in reader:
+					if len(row) >= 2:
+						file_path, hash_value = row[0], row[1]
+						hashes[file_path] = hash_value
+			logger.info(f"Loaded {len(hashes)} image hashes from {hash_file}")
+	except Exception as e:
+		logger.error(f"Error loading image hashes: {str(e)}")
+		
+	return hashes
+
+
+def save_image_hashes(hashes: Dict[str, str], hash_file: str = 'data/image_hashes.csv'):
+	"""
+	Save image hashes to a CSV file
+	
+	Args:
+		hashes: Dictionary mapping file paths to hash values
+		hash_file: Path to the CSV file to save image hashes
+	"""
+	try:
+		# Ensure data directory exists
+		os.makedirs(os.path.dirname(hash_file), exist_ok=True)
+		
+		with open(hash_file, 'w', encoding='utf-8', newline='') as f:
+			writer = csv.writer(f)
+			writer.writerow(['file_path', 'hash_value'])
+			for file_path, hash_value in hashes.items():
+				writer.writerow([file_path, hash_value])
+				
+		logger.info(f"Saved {len(hashes)} image hashes to {hash_file}")
+	except Exception as e:
+		logger.error(f"Error saving image hashes: {str(e)}")
+
+
+def compute_hash_for_file(file_path: str, hash_cache: Dict[str, str] = None) -> Optional[str]:
 	"""
 	Compute hash for a file (image or video).
 	For images, use perceptual hash if available, otherwise use file hash.
@@ -149,14 +201,27 @@ def compute_hash_for_file(file_path: str) -> Optional[str]:
 	
 	Args:
 		file_path: Path to the file
+		hash_cache: Optional dictionary to use as a cache for hashes
 		
 	Returns:
 		String representation of the hash or None if failed
 	"""
+	# Check if hash is in cache
+	if hash_cache is not None and file_path in hash_cache:
+		return hash_cache[file_path]
+		
 	if is_image_file(file_path):
-		return compute_image_hash(file_path)
+		hash_value = compute_image_hash(file_path)
+		# Add to cache if successful
+		if hash_value and hash_cache is not None:
+			hash_cache[file_path] = hash_value
+		return hash_value
 	elif is_video_file(file_path):
-		return compute_file_hash(file_path)
+		hash_value = compute_file_hash(file_path)
+		# Add to cache if successful
+		if hash_value and hash_cache is not None:
+			hash_cache[file_path] = hash_value
+		return hash_value
 	else:
 		return None
 
@@ -199,7 +264,7 @@ def hash_similarity(hash1: str, hash2: str) -> float:
 		# Return a binary similarity (1.0 if equal, 0.0 if different)
 		return 1.0 if hash1 == hash2 else 0.0
 
-def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'logs/metadata_status.csv') -> Tuple[int, int, int]:
+def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'data/metadata_status.csv') -> Tuple[int, int, int]:
 	"""
 	Check which files in the new directory need metadata updates from the old directory
 	
@@ -306,7 +371,7 @@ def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'logs/me
 	return len(new_files), len(files_with_metadata), len(files_without_metadata)
 
 
-def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'logs/name_duplicates.csv') -> Tuple[int, int]:
+def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'data/name_duplicates.csv') -> Tuple[int, int]:
 	"""
 	Find duplicates by checking for files with the same base name but with a suffix,
 	and optionally remove the duplicates with the suffix
@@ -378,7 +443,7 @@ def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool 
 	return len(confirmed_duplicates), removed
 
 
-def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'logs/duplicates.csv') -> Dict[str, List[str]]:
+def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'data/duplicates.csv') -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
 	Uses parallel processing and optimized algorithms for faster performance.
@@ -620,7 +685,7 @@ def rename_files_remove_suffix(directory: str, suffix: str = ' (1)', dry_run: bo
 	logger.info(f"Renaming complete. Processed {processed} files, renamed {renamed} files")
 	return processed, renamed
 
-def remove_duplicates(duplicates_log_path: str = 'logs/duplicates.csv', dry_run: bool = False) -> Tuple[int, int]:
+def remove_duplicates(duplicates_log_path: str = 'data/duplicates.csv', dry_run: bool = False) -> Tuple[int, int]:
 	"""
 	Remove duplicate files based on the duplicates log file
 	

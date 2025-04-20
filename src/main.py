@@ -23,7 +23,9 @@ from src.utils.file_utils import extract_date_from_filename
 # Configure logging
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 log_dir = os.path.join(project_root, "logs")
+data_dir = os.path.join(project_root, "data")
 os.makedirs(log_dir, exist_ok=True)
+os.makedirs(data_dir, exist_ok=True)
 
 logging.basicConfig(
 	level=logging.INFO,
@@ -419,7 +421,8 @@ def fix_metadata(args):
 	failure_count = 0
 	
 	# Create output log file for results
-	results_log_path = os.path.join(log_dir, 'metadata_results.csv')
+	results_log_path = os.path.join(data_dir, 'metadata_results.csv')
+	logger.info(f"Results written to: {results_log_path}")
 	with open(results_log_path, 'w') as results_log:
 		results_log.write("file_path,result,timestamp\n")
 	
@@ -482,20 +485,20 @@ def main():
 	parser.add_argument('--no-hash-matching', action='store_true', help='Disable image hash matching (faster but less accurate)')
 	parser.add_argument('--similarity', type=float, default=0.98, help='Similarity threshold for image matching (0.0-1.0, default: 0.98)')
 	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
-	parser.add_argument('--processed-log', default=os.path.join(log_dir, 'processed_files.csv'), help='Log file for processed files')
-	parser.add_argument('--failed-updates-log', default=os.path.join(log_dir, 'failed_updates.csv'), help='Log file for failed metadata updates')
+	parser.add_argument('--processed-log', default=os.path.join(data_dir, 'processed_files.csv'), help='Log file for processed files')
+	parser.add_argument('--failed-updates-log', default=os.path.join(data_dir, 'failed_updates.csv'), help='Log file for failed metadata updates')
 	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
 	parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicate files in the new directory based on duplicates.log')
-	parser.add_argument('--duplicates-log', default=os.path.join(log_dir, 'duplicates.csv'), help='Log file for duplicates')
+	parser.add_argument('--duplicates-log', default=os.path.join(data_dir, 'duplicates.csv'), help='Log file for duplicates')
 	parser.add_argument('--rename-files', action='store_true', help='Rename files by removing "(1)" from filenames')
 	parser.add_argument('--fix-metadata', action='store_true', help='Fix metadata for problematic file types (MPG, AVI, PNG, AAE)')
 	parser.add_argument('--extensions', type=str, help='Comma-separated list of file extensions to process (e.g., "mpg,avi,png")')
 	parser.add_argument('--overwrite', action='store_true', help='Overwrite existing XMP sidecar files')
 	parser.add_argument('--rename-suffix', default=' (1)', help='Suffix to remove from filenames (default: " (1)")')
 	parser.add_argument('--find-duplicates-by-name', action='store_true', help='Find duplicates by checking for files with the same base name but with "(1)" suffix')
-	parser.add_argument('--name-duplicates-log', default=os.path.join(log_dir, 'name_duplicates.csv'), help='Log file for name-based duplicates (default: logs/name_duplicates.csv)')
+	parser.add_argument('--name-duplicates-log', default=os.path.join(data_dir, 'name_duplicates.csv'), help='Log file for name-based duplicates (default: data/name_duplicates.csv)')
 	parser.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
-	parser.add_argument('--status-log', default=os.path.join(log_dir, 'metadata_status.csv'), help='Log file for metadata status (default: logs/metadata_status.csv)')
+	parser.add_argument('--status-log', default=os.path.join(data_dir, 'metadata_status.csv'), help='Log file for metadata status (default: data/metadata_status.csv)')
 	parser.add_argument('--import-to-photos', action='store_true', help='Import photos to Apple Photos after fixing metadata')
 	parser.add_argument('--import-with-albums', action='store_true', help='Import photos to Apple Photos and organize them into albums based on Google Takeout structure')
 	args = parser.parse_args()
@@ -742,7 +745,7 @@ def main():
 		logger.info(f"Failed updates are logged in: {args.failed_updates_log}")
 	logger.info(f"Not processed: {total_pairs - success_count - failure_count} files")
 	logger.info(f"Detailed processing log: {args.processed_log}")
-	logger.info(f"Duplicates report: logs/duplicates.csv")
+	logger.info(f"Duplicates report: data/duplicates.csv")
 	logger.info("=" * 50)
 	
 	if success_count > 0:
