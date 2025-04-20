@@ -9,10 +9,11 @@ import re
 import concurrent.futures
 from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
+from pathlib import Path
 
 from src.models.metadata import PhotoMetadata, Metadata
 from src.utils.file_utils import get_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
-from src.utils.image_utils import find_matching_file_by_hash, is_media_file, find_duplicates, compute_hash_for_file
+from src.utils.image_utils import is_media_file, compute_hash_for_file, find_duplicates, find_matching_file_by_hash, load_image_hashes, save_image_hashes
 
 logger = logging.getLogger(__name__)
 
@@ -561,24 +562,53 @@ class MetadataService:
 			# Precompute hashes for all files in the new directory if using hash matching
 			if use_hash_matching:
 				logger.info("Precomputing hashes for files in the new directory...")
-				batch_size = 500
-				for i in range(0, len(new_files_list), batch_size):
-					batch = new_files_list[i:i+batch_size]
-
-					# Process batch in parallel
-					with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-						hash_futures = {}
-						for target_file in batch:
-							hash_futures[executor.submit(compute_hash_for_file, target_file)] = target_file
-
-						for future in concurrent.futures.as_completed(hash_futures):
-							try:
-								future.result()  # Just compute and cache the hash
-							except Exception:
-								pass
-
-					if (i + batch_size) % 2000 == 0 or (i + batch_size) >= len(new_files_list):
-						logger.info(f"Precomputed hashes for {min(i + batch_size, len(new_files_list))} of {len(new_files_list)} files")
+				
+				# Load existing hashes from cache file
+				hash_cache = load_image_hashes('data/image_hashes.csv')
+				logger.info(f"Loaded {len(hash_cache)} hashes from cache")
+				
+				# Identify files that need hash computation
+				files_to_hash = []
+				for file_path in new_files_list:
+					if file_path not in hash_cache:
+						files_to_hash.append(file_path)
+				
+				if files_to_hash:
+					logger.info(f"Computing hashes for {len(files_to_hash)} new files...")
+					
+					# Compute hashes in parallel batches to avoid memory issues
+					batch_size = 500
+					new_hashes = {}
+					
+					for i in range(0, len(files_to_hash), batch_size):
+						batch = files_to_hash[i:i+batch_size]
+						
+						# Process batch in parallel
+						with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+							hash_futures = {}
+							for file_path in batch:
+								hash_futures[executor.submit(compute_hash_for_file, file_path)] = file_path
+							
+							for future in concurrent.futures.as_completed(hash_futures):
+								file_path = hash_futures[future]
+								try:
+									file_hash = future.result()
+									if file_hash:
+										new_hashes[file_path] = file_hash
+										hash_cache[file_path] = file_hash
+								except Exception as e:
+									logger.debug(f"Error computing hash for {file_path}: {str(e)}")
+						
+						if (i + batch_size) % 2000 == 0 or (i + batch_size) >= len(files_to_hash):
+							logger.info(f"Computed hashes for {min(i + batch_size, len(files_to_hash))} of {len(files_to_hash)} files")
+							# Save hashes periodically to avoid losing progress
+							save_image_hashes(hash_cache, 'data/image_hashes.csv')
+					
+					logger.info(f"Computed {len(new_hashes)} new hashes")
+					# Save all hashes to cache file
+					save_image_hashes(hash_cache, 'data/image_hashes.csv')
+				else:
+					logger.info("All file hashes already cached, skipping hash computation")
 
 		except (PermissionError, FileNotFoundError) as e:
 			logger.error(f"Error accessing directory {new_dir}: {str(e)}")

@@ -2,6 +2,7 @@
 Utility functions for image processing, hashing and duplicate detection
 """
 import os
+import csv
 import logging
 import hashlib
 import concurrent.futures
@@ -451,6 +452,7 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicat
 	Args:
 		directory: Directory to search for duplicates
 		similarity_threshold: Threshold for considering images as duplicates (0.0 to 1.0)
+		duplicates_log: Path to the log file for duplicates
 		
 	Returns:
 		Dictionary mapping original files to lists of duplicate files
@@ -461,6 +463,10 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicat
 	duplicates = {}  # Map original file to list of duplicate files
 	media_files = []
 	
+	# Load existing hashes from cache file
+	hash_cache = load_image_hashes('data/image_hashes.csv')
+	logger.info(f"Loaded {len(hash_cache)} hashes from cache")
+	
 	# Collect all media files first
 	logger.info(f"Collecting media files from {directory}...")
 	for root, _, files in os.walk(directory):
@@ -469,7 +475,48 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicat
 			if is_media_file(file_path):
 				media_files.append(file_path)
 	
-	logger.info(f"Found {len(media_files)} media files. Computing hashes...")
+	logger.info(f"Found {len(media_files)} media files")
+	
+	# Identify files that need hash computation
+	files_to_hash = []
+	for file_path in media_files:
+		if file_path not in hash_cache:
+			files_to_hash.append(file_path)
+	
+	if files_to_hash:
+		logger.info(f"Computing hashes for {len(files_to_hash)} new files...")
+		
+		# Compute hashes in parallel batches to avoid memory issues
+		batch_size = 500
+		new_hashes = {}
+		
+		for i in range(0, len(files_to_hash), batch_size):
+			batch = files_to_hash[i:i+batch_size]
+			
+			# Process batch in parallel
+			with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+				futures = {}
+				for file_path in batch:
+					futures[executor.submit(compute_hash_for_file, file_path)] = file_path
+				
+				for future in concurrent.futures.as_completed(futures):
+					file_path = futures[future]
+					try:
+						file_hash = future.result()
+						if file_hash:
+							new_hashes[file_path] = file_hash
+							hash_cache[file_path] = file_hash
+					except Exception as e:
+						logger.debug(f"Error computing hash for {file_path}: {str(e)}")
+			
+			if (i + batch_size) % 2000 == 0 or (i + batch_size) >= len(files_to_hash):
+				logger.info(f"Computed hashes for {min(i + batch_size, len(files_to_hash))} of {len(files_to_hash)} files")
+				# Save hashes periodically to avoid losing progress
+				save_image_hashes(hash_cache, 'data/image_hashes.csv')
+		
+		logger.info(f"Computed {len(new_hashes)} new hashes")
+		# Save all hashes to cache file
+		save_image_hashes(hash_cache, 'data/image_hashes.csv')
 	
 	# Group files by size first (quick filter)
 	size_groups = defaultdict(list)
@@ -486,75 +533,77 @@ def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicat
 	potential_duplicate_groups = {size: files for size, files in size_groups.items() if len(files) > 1}
 	logger.info(f"Found {len(potential_duplicate_groups)} groups of files with similar sizes")
 	
-	# Function to compute hash for a file
-	def compute_hash_for_file_wrapper(file_path):
-		try:
-			return file_path, compute_hash_for_file(file_path)
-		except Exception as e:
-			logger.debug(f"Error computing hash for {file_path}: {str(e)}")
-			return file_path, None
-	
-	# Process each group in parallel
-	with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-		for size_key, files in potential_duplicate_groups.items():
-			# Compute hashes for all files in this group
-			hash_results = list(executor.map(compute_hash_for_file_wrapper, files))
+	# Process each group
+	for size_key, files in potential_duplicate_groups.items():
+		# Group files by hash
+		hash_groups = defaultdict(list)
+		for file_path in files:
+			if file_path in hash_cache and hash_cache[file_path]:
+				hash_groups[hash_cache[file_path]].append(file_path)
+		
+		# Add exact hash matches to duplicates
+		for file_hash, file_paths in hash_groups.items():
+			if len(file_paths) > 1:
+				# Sort by modification time to keep the oldest file as original
+				file_paths.sort(key=lambda f: os.path.getmtime(f))
+				original = file_paths[0]
+				if original not in duplicates:
+					duplicates[original] = []
+				duplicates[original].extend(file_paths[1:])
+		
+		# If using perceptual hashing, check for similar (but not identical) images
+		if HAS_IMAGE_HASH:
+			# Only compare hashes between different groups
+			hash_items = [(h, f) for h, files in hash_groups.items() 
+						 for f in files if len(files) == 1 and is_image_file(f)]
 			
-			# Group files by hash
-			hash_groups = defaultdict(list)
-			for file_path, file_hash in hash_results:
-				if file_hash:
-					hash_groups[file_hash].append(file_path)
+			# Skip small groups
+			if len(hash_items) <= 1:
+				continue
 			
-			# Add exact hash matches to duplicates
-			for file_hash, file_paths in hash_groups.items():
-				if len(file_paths) > 1:
-					# Sort by modification time to keep the oldest file as original
-					file_paths.sort(key=lambda f: os.path.getmtime(f))
-					original = file_paths[0]
-					if original not in duplicates:
-						duplicates[original] = []
-					duplicates[original].extend(file_paths[1:])
-			
-			# If using perceptual hashing, check for similar (but not identical) images
-			if HAS_IMAGE_HASH:
-				# Only compare hashes between different groups
-				hash_items = [(h, f) for h, files in hash_groups.items() 
-							 for f in files if len(files) == 1 and is_image_file(f)]
+			# Compare each pair of hashes
+			for i in range(len(hash_items)):
+				hash1, file1 = hash_items[i]
 				
-				# Skip small groups
-				if len(hash_items) <= 1:
+				# Skip if this file is already marked as a duplicate
+				if any(file1 in dups for dups in duplicates.values()):
 					continue
-				
-				# Compare each pair of hashes
-				for i in range(len(hash_items)):
-					hash1, file1 = hash_items[i]
+					
+				for j in range(i + 1, len(hash_items)):
+					hash2, file2 = hash_items[j]
 					
 					# Skip if this file is already marked as a duplicate
-					if any(file1 in dups for dups in duplicates.values()):
+					if any(file2 in dups for dups in duplicates.values()):
 						continue
 						
-					for j in range(i + 1, len(hash_items)):
-						hash2, file2 = hash_items[j]
+					# Check similarity
+					similarity = hash_similarity(hash1, hash2)
+					if similarity >= similarity_threshold:
+						# Determine which file to keep as original (e.g., keep the older file)
+						original = file1
+						duplicate = file2
 						
-						# Skip if this file is already marked as a duplicate
-						if any(file2 in dups for dups in duplicates.values()):
-							continue
-							
-						# Check similarity
-						similarity = hash_similarity(hash1, hash2)
-						if similarity >= similarity_threshold:
-							# Determine which file to keep as original (e.g., keep the older file)
-							original = file1
-							duplicate = file2
-							
-							if os.path.getmtime(file2) < os.path.getmtime(file1):
-								original = file2
-								duplicate = file1
-							
-							if original not in duplicates:
-								duplicates[original] = []
-							duplicates[original].append(duplicate)
+						if os.path.getmtime(file2) < os.path.getmtime(file1):
+							original = file2
+							duplicate = file1
+						
+						if original not in duplicates:
+							duplicates[original] = []
+						duplicates[original].append(duplicate)
+	
+	# Write duplicates to CSV file
+	try:
+		os.makedirs(os.path.dirname(duplicates_log), exist_ok=True)
+		with open(duplicates_log, 'w', newline='') as f:
+			import csv
+			writer = csv.writer(f)
+			writer.writerow(['original', 'duplicate'])
+			for original, dups in duplicates.items():
+				for dup in dups:
+					writer.writerow([original, dup])
+		logger.info(f"Wrote duplicates to {duplicates_log}")
+	except Exception as e:
+		logger.error(f"Error writing duplicates to CSV: {str(e)}")
 	
 	logger.info(f"Found {sum(len(dups) for dups in duplicates.values())} duplicate files in {len(duplicates)} groups")
 	return duplicates
