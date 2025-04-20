@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.services.exiftool_service import ExifToolService
 from src.services.metadata_service import MetadataService
+from src.services.copy_service import CopyService
 from src.utils.file_utils import extract_date_from_filename
 
 # Configure logging
@@ -541,49 +542,15 @@ def main():
 	
 	# Copy files from old to new if requested
 	if args.copy_to_new:
-		logger.info(f"Copying media files from {old_dir} to {new_dir}...")
-		copied_count = 0
-		skipped_count = 0
+		logger.info(f"Copying missing media files from {old_dir} to {new_dir}...")
 		
-		# Walk through the old directory
-		for root, _, files in os.walk(old_dir):
-			for file in files:
-				# Skip JSON metadata files
-				if file.endswith('.json'):
-					continue
-				
-				# Get source and destination paths
-				source_path = os.path.join(root, file)
-				
-				# Create relative path from old_dir
-				rel_path = os.path.relpath(source_path, old_dir)
-				
-				# Skip if the file is in a subdirectory that's not a media file
-				from src.utils.image_utils import is_media_file
-				if not is_media_file(source_path):
-					continue
-				
-				# Create destination path
-				dest_path = os.path.join(new_dir, os.path.basename(source_path))
-				
-				# Skip if the file already exists in the new directory
-				if os.path.exists(dest_path):
-					skipped_count += 1
-					continue
-				
-				try:
-					# Copy the file
-					import shutil
-					shutil.copy2(source_path, dest_path)
-					copied_count += 1
-					
-					# Log progress every 100 files
-					if copied_count % 100 == 0:
-						logger.info(f"Copied {copied_count} files to {new_dir}")
-				except Exception as e:
-					logger.error(f"Error copying {source_path} to {dest_path}: {str(e)}")
+		# Use the new CopyService to copy missing files
+		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
 		
-		logger.info(f"Finished copying files. Copied {copied_count} files, skipped {skipped_count} existing files.")
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
+		else:
+			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
 	
 	# Remove duplicates if requested
 	if args.remove_duplicates:
