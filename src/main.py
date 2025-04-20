@@ -672,9 +672,9 @@ def main():
 	logger.info(f"Scanning directories: {old_dir} -> {new_dir}")
 	use_hash_matching = not args.no_hash_matching
 	metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
-												use_hash_matching=use_hash_matching, 
-												similarity_threshold=args.similarity,
-												duplicates_log=args.duplicates_log)
+										use_hash_matching=not args.no_hash_matching, 
+										similarity_threshold=args.similarity,
+										duplicates_log=args.duplicates_log)
 	
 	if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
 		logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")

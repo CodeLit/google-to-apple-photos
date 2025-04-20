@@ -196,16 +196,21 @@ class MetadataService:
 			return None
 
 	@staticmethod
-	def find_metadata_pairs(old_dir: str, new_dir: str) -> List[Tuple[str, str]]:
+	def find_metadata_pairs(old_dir: str, new_dir: str, 
+						   no_hash_matching: bool = False,
+						   similarity_threshold: float = 0.98, duplicates_log: str = 'data/duplicates.csv') -> List[Tuple[str, str, PhotoMetadata]]:
 		"""
 		Find pairs of JSON metadata files and their matching media files
 
 		Args:
 			old_dir: Directory containing Google Takeout files (JSON metadata and original media)
 			new_dir: Directory containing Apple Photos exports to be updated
+			no_hash_matching: If True, disable image hash matching (faster but less accurate)
+			similarity_threshold: Threshold for considering two images as duplicates (0.0-1.0)
+			duplicates_log: Path to the log file for duplicates
 
 		Returns:
-			List of tuples (json_path, matching_file_path)
+			List of tuples (json_path, matching_file_path, metadata)
 		"""
 		if not os.path.exists(old_dir):
 			logger.error(f"Old directory not found: {old_dir}")
@@ -216,6 +221,9 @@ class MetadataService:
 			return []
 
 		try:
+			# Index files in the new directory first for faster matching
+			indexed_files = MetadataService.index_files(new_dir)
+			
 			# Find all JSON files in the old directory
 			json_files = []
 			for root, _, files in os.walk(old_dir):
@@ -225,22 +233,36 @@ class MetadataService:
 
 			logger.info(f"Found {len(json_files)} JSON files in {old_dir}")
 
-			# Cache files in the new directory for faster matching
-			logger.info(f"Caching files in {new_dir} for faster matching...")
-			new_files = []
-			for root, _, files in os.walk(new_dir):
-				for file in files:
-					if is_media_file(file):
-						new_files.append(os.path.join(root, file))
+			# Find duplicates if hash matching is enabled
+			duplicates = {}
+			if not no_hash_matching:
+				duplicates = find_duplicates(new_dir, similarity_threshold, duplicates_log)
 
-			logger.info(f"Found {len(new_files)} media files in the new directory")
+			# Pre-extract metadata from all JSON files for better performance
+			logger.info(f"Pre-extracting metadata from JSON files...")
+			metadata_cache = {}
+			for json_file in json_files:
+				metadata = MetadataService.extract_metadata(json_file)
+				if metadata:
+					metadata_cache[json_file] = metadata
+			
+			logger.info(f"Extracted metadata from {len(metadata_cache)} JSON files")
 
 			# Find matching pairs
 			pairs = []
-			for json_path in json_files:
-				matching_file = MetadataService.find_matching_file(json_path, new_dir)
+			processed = 0
+			matched = 0
+
+			for json_file in json_files:
+				processed += 1
+				if processed % 100 == 0:
+					logger.info(f"Processed {processed} files, found {len(pairs)} JSON files with {matched} matches")
+
+				matching_file = MetadataService.find_matching_file(json_file, new_dir)
 				if matching_file:
-					pairs.append((json_path, matching_file))
+					matched += 1
+					if json_file in metadata_cache:
+						pairs.append((json_file, matching_file, metadata_cache[json_file]))
 
 			logger.info(f"Found {len(pairs)} matching pairs between JSON metadata and media files")
 			return pairs
