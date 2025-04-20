@@ -84,6 +84,54 @@ class MetadataService:
 			logger.error(f"Error extracting metadata from {json_path}: {str(e)}")
 			return None
 
+	# Class variable to store indexed files
+	_indexed_files = {}
+	_indexed_directories = set()
+
+	@staticmethod
+	def index_files(directory: str) -> Dict[str, List[str]]:
+		"""
+		Index all media files in a directory for faster matching
+
+		Args:
+			directory: Directory to index
+
+		Returns:
+			Dictionary mapping base filenames to full file paths
+		"""
+		# Check if this directory has already been indexed
+		if directory in MetadataService._indexed_directories:
+			return MetadataService._indexed_files
+
+		logger.info(f"Indexing files in {directory} for faster matching...")
+		indexed_files = {}
+		file_count = 0
+
+		for root, _, files in os.walk(directory):
+			for filename in files:
+				if is_media_file(filename):
+					file_count += 1
+					full_path = os.path.join(root, filename)
+					
+					# Store both the full filename and base filename as keys
+					base_name = get_base_filename(filename)
+					if base_name not in indexed_files:
+						indexed_files[base_name] = []
+					indexed_files[base_name].append(full_path)
+
+					# Also store with the full filename as key
+					if filename not in indexed_files:
+						indexed_files[filename] = []
+					indexed_files[filename].append(full_path)
+
+		logger.info(f"Indexed {file_count} files in {directory}")
+		
+		# Store in class variable for reuse
+		MetadataService._indexed_files = indexed_files
+		MetadataService._indexed_directories.add(directory)
+		
+		return indexed_files
+
 	@staticmethod
 	def find_matching_file(json_path: str, target_dir: str) -> Optional[str]:
 		"""
@@ -105,6 +153,9 @@ class MetadataService:
 			return None
 
 		try:
+			# Make sure files are indexed
+			indexed_files = MetadataService.index_files(target_dir)
+
 			# Get the base filename from the JSON path
 			json_filename = os.path.basename(json_path)
 
@@ -117,26 +168,20 @@ class MetadataService:
 				logger.warning(f"Unexpected JSON filename format: {json_filename}")
 				return None
 
-			# Look for exact filename match first, recursively in all subdirectories
-			for root, _, files in os.walk(target_dir):
-				for file in files:
-					# Skip non-media files
-					if not is_media_file(file):
-						continue
+			# Look for exact filename match first using the index
+			if base_name in indexed_files and indexed_files[base_name]:
+				return indexed_files[base_name][0]  # Return the first match
 
-					# Check for exact match
-					if get_base_filename(file) == base_name:
-						return os.path.join(root, file)
-
-					# Check for duplicate filenames (with suffixes like '(1)')
-					if are_duplicate_filenames(get_base_filename(file), base_name):
-						return os.path.join(root, file)
+			# Check for duplicate filenames (with suffixes like '(1)')
+			for indexed_base_name, file_paths in indexed_files.items():
+				if are_duplicate_filenames(indexed_base_name, base_name) and file_paths:
+					return file_paths[0]  # Return the first match
 
 			# If no exact match, try image hash matching
 			# Extract the original file path from the JSON directory
 			orig_dir = os.path.dirname(json_path)
 			potential_orig_files = [f for f in os.listdir(orig_dir) 
-								if is_media_file(f) and get_base_filename(f) == base_name]
+							if is_media_file(f) and get_base_filename(f) == base_name]
 
 			if potential_orig_files:
 				orig_file = os.path.join(orig_dir, potential_orig_files[0])
