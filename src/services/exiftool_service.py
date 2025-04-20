@@ -102,12 +102,26 @@ class ExifToolService:
 				
 				# Check that the copy was created successfully and has the correct size
 				if os.path.exists(new_path) and os.path.getsize(new_path) > 0:
-					# Remove the original file with incorrect extension
+					# Verify that the files have the same content by comparing hashes
 					try:
-						os.remove(file_path)
-						logger.info(f"Removed original file with incorrect extension: {file_path}")
+						# Import here to avoid circular imports
+						from src.utils.image_utils import compute_file_hash
+						
+						# Compute hashes for both files
+						orig_hash = compute_file_hash(file_path)
+						new_hash = compute_file_hash(new_path)
+						
+						# Only remove the original if hashes match
+						if orig_hash and new_hash and orig_hash == new_hash:
+							try:
+								os.remove(file_path)
+								logger.info(f"Removed original file with incorrect extension: {file_path}")
+							except Exception as e:
+								logger.warning(f"Could not remove original file {file_path}: {str(e)}")
+						else:
+							logger.warning(f"Hash mismatch between {file_path} and {new_path}, keeping both files")
 					except Exception as e:
-						logger.warning(f"Could not remove original file {file_path}: {str(e)}")
+						logger.warning(f"Error comparing file hashes, keeping both files: {str(e)}")
 					return new_path
 				else:
 					logger.error(f"Failed to create valid copy with correct extension: {new_path}")

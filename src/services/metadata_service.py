@@ -13,7 +13,7 @@ from pathlib import Path
 
 from src.models.metadata import PhotoMetadata, Metadata
 from src.utils.file_utils import get_base_filename, extract_date_from_filename, is_uuid_filename, are_duplicate_filenames
-from src.utils.image_utils import is_media_file, compute_hash_for_file, find_duplicates, find_matching_file_by_hash, load_image_hashes, save_image_hashes
+from src.utils.image_utils import is_media_file, compute_hash_for_file, find_duplicates, find_matching_file_by_hash, load_image_hashes, save_image_hashes, remove_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -621,15 +621,20 @@ class MetadataService:
 			if duplicates:
 				dup_count = sum(len(dups) for dups in duplicates.values())
 				logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
-
+				
 				# Write duplicates to a CSV file
 				try:
 					with open(duplicates_log, 'w', newline='') as f:
 						writer = csv.writer(f)
-						writer.writerow(['original', 'duplicate'])
+						writer.writerow(['Original', 'Duplicate'])
 						for original, dups in duplicates.items():
 							for dup in dups:
 								writer.writerow([original, dup])
+					logger.info(f"Wrote duplicates to {duplicates_log}")
+					
+					# Remove duplicate files
+					removed_count = remove_duplicates(duplicates, dry_run=False)
+					logger.info(f"Removed {removed_count} duplicate files")
 				except Exception as e:
 					logger.error(f"Error writing duplicates to CSV: {str(e)}")
 			else:

@@ -3,9 +3,11 @@ import shutil
 import unittest
 import tempfile
 import logging
+import hashlib
 from pathlib import Path
 
 from src.services.exiftool_service import ExifToolService
+from src.utils.image_utils import compute_file_hash
 
 logger = logging.getLogger(__name__)
 

@@ -898,3 +898,56 @@ def find_matching_file_by_hash(source_file: str, target_dir: str,
 		logger.debug(f"Found match for {source_file} -> {best_match} (similarity: {best_similarity:.2f})")
 		
 	return best_match
+
+def remove_duplicates(duplicates: Dict[str, List[str]], dry_run: bool = False) -> int:
+	"""
+Remove duplicate files, keeping only the original file.
+Before removing, verifies that files have identical content by comparing hashes.
+
+Args:
+duplicates: Dictionary mapping original files to lists of duplicate files
+dry_run: If True, don't actually remove files, just log what would be done
+
+Returns:
+Number of files removed
+"""
+	files_removed = 0
+	
+	for original, duplicate_files in duplicates.items():
+		if not os.path.exists(original):
+			logger.warning(f"Original file does not exist: {original}")
+			continue
+		
+		# Get hash of original file
+		orig_hash = compute_file_hash(original)
+		if not orig_hash:
+			logger.warning(f"Could not compute hash for original file: {original}")
+			continue
+		
+		for duplicate in duplicate_files:
+			if not os.path.exists(duplicate):
+				logger.warning(f"Duplicate file does not exist: {duplicate}")
+				continue
+			
+			# Verify that the files have identical content
+			dup_hash = compute_file_hash(duplicate)
+			if not dup_hash:
+				logger.warning(f"Could not compute hash for duplicate file: {duplicate}")
+				continue
+			
+			if orig_hash == dup_hash:
+				# Files have identical content, safe to remove the duplicate
+				if not dry_run:
+					try:
+						os.remove(duplicate)
+						logger.info(f"Removed duplicate file: {duplicate}")
+						files_removed += 1
+					except Exception as e:
+						logger.error(f"Error removing duplicate file {duplicate}: {str(e)}")
+				else:
+					logger.info(f"[DRY RUN] Would remove duplicate file: {duplicate}")
+					files_removed += 1
+			else:
+				logger.warning(f"Hash mismatch between {original} and {duplicate}, keeping both files")
+	
+	return files_removed
