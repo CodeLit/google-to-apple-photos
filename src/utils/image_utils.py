@@ -199,7 +199,7 @@ def hash_similarity(hash1: str, hash2: str) -> float:
 		# Return a binary similarity (1.0 if equal, 0.0 if different)
 		return 1.0 if hash1 == hash2 else 0.0
 
-def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'metadata_status.log') -> Tuple[int, int, int]:
+def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'logs/metadata_status.csv') -> Tuple[int, int, int]:
 	"""
 	Check which files in the new directory need metadata updates from the old directory
 	
@@ -286,14 +286,19 @@ def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'metadat
 	logger.info(f"Found metadata for {len(files_with_metadata)} files")
 	logger.info(f"Missing metadata for {len(files_without_metadata)} files")
 	
-	# Write to log file
+	# Ensure logs directory exists
+	os.makedirs(os.path.dirname(status_log), exist_ok=True)
+	
+	# Write files with metadata to CSV
 	with open(status_log, 'w', encoding='utf-8') as f:
-		f.write("# Files with metadata available\n")
 		f.write("new_file,json_file\n")
 		for new_file, json_path in files_with_metadata:
 			f.write(f"{new_file},{json_path}\n")
-		
-		f.write("\n# Files without metadata\n")
+	
+	# Write files without metadata to a separate CSV
+	without_metadata_log = os.path.join(os.path.dirname(status_log), 'files_without_metadata.csv')
+	with open(without_metadata_log, 'w', encoding='utf-8') as f:
+		f.write("file_path\n")
 		for new_file in files_without_metadata:
 			f.write(f"{new_file}\n")
 	
@@ -301,7 +306,7 @@ def check_metadata_status(old_dir: str, new_dir: str, status_log: str = 'metadat
 	return len(new_files), len(files_with_metadata), len(files_without_metadata)
 
 
-def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'logs/name_duplicates.log') -> Tuple[int, int]:
+def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool = False, duplicates_log: str = 'logs/name_duplicates.csv') -> Tuple[int, int]:
 	"""
 	Find duplicates by checking for files with the same base name but with a suffix,
 	and optionally remove the duplicates with the suffix
@@ -373,7 +378,7 @@ def find_duplicates_by_name(directory: str, suffix: str = ' (1)', dry_run: bool 
 	return len(confirmed_duplicates), removed
 
 
-def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'logs/duplicates.log') -> Dict[str, List[str]]:
+def find_duplicates(directory: str, similarity_threshold: float = 0.98, duplicates_log: str = 'logs/duplicates.csv') -> Dict[str, List[str]]:
 	"""
 	Find duplicate images in a directory based on perceptual hashing.
 	Uses parallel processing and optimized algorithms for faster performance.
@@ -615,7 +620,7 @@ def rename_files_remove_suffix(directory: str, suffix: str = ' (1)', dry_run: bo
 	logger.info(f"Renaming complete. Processed {processed} files, renamed {renamed} files")
 	return processed, renamed
 
-def remove_duplicates(duplicates_log_path: str = 'logs/duplicates.log', dry_run: bool = False) -> Tuple[int, int]:
+def remove_duplicates(duplicates_log_path: str = 'logs/duplicates.csv', dry_run: bool = False) -> Tuple[int, int]:
 	"""
 	Remove duplicate files based on the duplicates log file
 	
