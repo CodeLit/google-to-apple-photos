@@ -32,6 +32,8 @@ Write a script that processes metadata of photos and videos exported from Apple 
    - `Title` (optional)
    - GPS data (optional)
 4. Do not move, copy, or rename any files. Modify files in-place inside `./new`.
+5. Do not compare files by name, use hash instead.
+6. Use data/image_hashes.csv to cache computed hashes.
 
 ## Output
 

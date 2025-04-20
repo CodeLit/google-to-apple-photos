@@ -4,7 +4,7 @@ import logging
 from typing import List, Tuple, Dict, Set
 from pathlib import Path
 
-from src.utils.image_utils import is_media_file
+from src.utils.image_utils import is_media_file, compute_hash_for_file, load_image_hashes, save_image_hashes
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ class CopyService:
 	def copy_missing_files(old_dir: str, new_dir: str, dry_run: bool = False) -> Tuple[int, int]:
 		"""
 		Copy media files from old directory to new directory if they don't exist in new
+		based on hash comparison to avoid duplicates
 		
 		Args:
 			old_dir: Source directory with original files
@@ -52,17 +53,47 @@ class CopyService:
 		
 		logger.info(f"Found {len(new_files)} media files in {new_dir}")
 		
-		# Create a set of filenames in new directory for faster lookup
-		new_filenames = {os.path.basename(f) for f in new_files}
+		# Load hash cache
+		logger.info("Loading hash cache...")
+		hash_cache = load_image_hashes('data/image_hashes.csv')
+		logger.info(f"Loaded {len(hash_cache)} hashes from cache")
 		
-		# Find files that exist in old but not in new
+		# Compute hashes for files in new directory
+		logger.info("Computing hashes for files in new directory...")
+		new_file_hashes = {}
+		for i, file_path in enumerate(new_files):
+			file_hash = compute_hash_for_file(file_path, hash_cache)
+			if file_hash:
+				new_file_hashes[file_hash] = file_path
+			
+			# Log progress every 500 files
+			if (i + 1) % 500 == 0:
+				logger.info(f"Computed hashes for {i + 1}/{len(new_files)} files in new directory")
+				# Save hash cache periodically
+				save_image_hashes(hash_cache, 'data/image_hashes.csv')
+		
+		logger.info(f"Computed hashes for {len(new_file_hashes)} files in new directory")
+		
+		# Find files that exist in old but not in new based on hash
+		logger.info("Finding missing files based on hash comparison...")
 		missing_files = []
-		for old_file in old_files:
-			filename = os.path.basename(old_file)
-			if filename not in new_filenames:
+		for i, old_file in enumerate(old_files):
+			file_hash = compute_hash_for_file(old_file, hash_cache)
+			
+			# If we couldn't compute a hash or the hash doesn't exist in new directory
+			if not file_hash or file_hash not in new_file_hashes:
 				missing_files.append(old_file)
+			
+			# Log progress every 500 files
+			if (i + 1) % 500 == 0:
+				logger.info(f"Processed {i + 1}/{len(old_files)} files from old directory")
+				# Save hash cache periodically
+				save_image_hashes(hash_cache, 'data/image_hashes.csv')
 		
-		logger.info(f"Found {len(missing_files)} files in {old_dir} that don't exist in {new_dir}")
+		# Save final hash cache
+		save_image_hashes(hash_cache, 'data/image_hashes.csv')
+		
+		logger.info(f"Found {len(missing_files)} files in {old_dir} that don't exist in {new_dir} based on hash comparison")
 		
 		# Copy missing files
 		copied_count = 0
