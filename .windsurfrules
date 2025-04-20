@@ -50,6 +50,22 @@ Write a script that processes metadata of photos and videos exported from Apple 
 - Validate data before writing metadata.
 - Write self-contained, minimal logic.
 
+## Workflow
+
+The script now supports a simplified workflow:
+
+1. Run the script without arguments to perform all steps automatically:
+   - Copy missing files from old directory to new directory
+   - Find and remove duplicates in the new directory
+   - Apply metadata from Google Takeout JSON files to files in the new directory
+2. Use advanced options if you need more control:
+   - `--skip-copy` - Skip copying files from old to new
+   - `--skip-duplicates` - Skip finding and removing duplicates
+   - `--skip-metadata` - Skip applying metadata
+   - `--copy-to-new` - Only copy files from old to new
+   - `--find-duplicates-only` - Only find duplicates
+   - `--remove-duplicates` - Only remove duplicates
+
 ## Final Step (Manual)
 
 The user will manually re-import the corrected files from `./new` into Apple Photos.

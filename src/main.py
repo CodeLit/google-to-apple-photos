@@ -475,7 +475,13 @@ def fix_metadata(args):
 
 
 def main():
-	"""Main function to run the metadata synchronization process"""
+	"""Main function to run the metadata synchronization process
+	
+	By default, this function performs a complete workflow:
+	1. Copy missing files from old directory to new directory
+	2. Find and remove duplicates in the new directory
+	3. Apply metadata from Google Takeout JSON files to files in the new directory
+	"""
 	parser = argparse.ArgumentParser(description='Synchronize metadata from Google Takeout to Apple Photos exports')
 	parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without modifying any files')
 	parser.add_argument('--old-dir', default='old', help='Directory with Google Takeout files (default: old)')
@@ -485,23 +491,29 @@ def main():
 	parser.add_argument('--quiet', '-q', action='store_true', help='Suppress warning messages about missing files')
 	parser.add_argument('--no-hash-matching', action='store_true', help='Disable image hash matching (faster but less accurate)')
 	parser.add_argument('--similarity', type=float, default=0.98, help='Similarity threshold for image matching (0.0-1.0, default: 0.98)')
-	parser.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
 	parser.add_argument('--processed-log', default=os.path.join(data_dir, 'processed_files.csv'), help='Log file for processed files')
 	parser.add_argument('--failed-updates-log', default=os.path.join(data_dir, 'failed_updates.csv'), help='Log file for failed metadata updates')
-	parser.add_argument('--copy-to-new', action='store_true', help='Copy files from old directory to new directory before processing')
-	parser.add_argument('--remove-duplicates', action='store_true', help='Remove duplicate files in the new directory based on duplicates.log')
 	parser.add_argument('--duplicates-log', default=os.path.join(data_dir, 'duplicates.csv'), help='Log file for duplicates')
-	parser.add_argument('--rename-files', action='store_true', help='Rename files by removing "(1)" from filenames')
-	parser.add_argument('--fix-metadata', action='store_true', help='Fix metadata for problematic file types (MPG, AVI, PNG, AAE)')
-	parser.add_argument('--extensions', type=str, help='Comma-separated list of file extensions to process (e.g., "mpg,avi,png")')
-	parser.add_argument('--overwrite', action='store_true', help='Overwrite existing XMP sidecar files')
 	parser.add_argument('--rename-suffix', default=' (1)', help='Suffix to remove from filenames (default: " (1)")')
-	parser.add_argument('--find-duplicates-by-name', action='store_true', help='Find duplicates by checking for files with the same base name but with "(1)" suffix')
-	parser.add_argument('--name-duplicates-log', default=os.path.join(data_dir, 'name_duplicates.csv'), help='Log file for name-based duplicates (default: data/name_duplicates.csv)')
-	parser.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
 	parser.add_argument('--status-log', default=os.path.join(data_dir, 'metadata_status.csv'), help='Log file for metadata status (default: data/metadata_status.csv)')
 	parser.add_argument('--import-to-photos', action='store_true', help='Import photos to Apple Photos after fixing metadata')
 	parser.add_argument('--import-with-albums', action='store_true', help='Import photos to Apple Photos and organize them into albums based on Google Takeout structure')
+	
+	# Advanced options (hidden by default, for specific use cases)
+	advanced_group = parser.add_argument_group('Advanced options', 'These options are for specific use cases and not needed for normal operation')
+	advanced_group.add_argument('--skip-copy', action='store_true', help='Skip copying files from old directory to new directory')
+	advanced_group.add_argument('--skip-duplicates', action='store_true', help='Skip finding and removing duplicates')
+	advanced_group.add_argument('--skip-metadata', action='store_true', help='Skip applying metadata')
+	advanced_group.add_argument('--find-duplicates-only', action='store_true', help='Only find and report duplicates without updating metadata')
+	advanced_group.add_argument('--copy-to-new', action='store_true', help='Only copy files from old directory to new directory')
+	advanced_group.add_argument('--remove-duplicates', action='store_true', help='Only remove duplicate files in the new directory')
+	advanced_group.add_argument('--rename-files', action='store_true', help='Only rename files by removing "(1)" from filenames')
+	advanced_group.add_argument('--fix-metadata', action='store_true', help='Fix metadata for problematic file types (MPG, AVI, PNG, AAE)')
+	advanced_group.add_argument('--extensions', type=str, help='Comma-separated list of file extensions to process (e.g., "mpg,avi,png")')
+	advanced_group.add_argument('--overwrite', action='store_true', help='Overwrite existing XMP sidecar files')
+	advanced_group.add_argument('--find-duplicates-by-name', action='store_true', help='Find duplicates by checking for files with the same base name but with "(1)" suffix')
+	advanced_group.add_argument('--name-duplicates-log', default=os.path.join(data_dir, 'name_duplicates.csv'), help='Log file for name-based duplicates (default: data/name_duplicates.csv)')
+	advanced_group.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
 	args = parser.parse_args()
 	
 	# Set logging level based on verbosity
@@ -540,89 +552,7 @@ def main():
 	# Set up the processed files and failed updates loggers
 	MetadataService.setup_processed_files_logger(args.processed_log, args.failed_updates_log)
 	
-	# Copy files from old to new if requested
-	if args.copy_to_new:
-		logger.info(f"Copying missing media files from {old_dir} to {new_dir}...")
-		
-		# Use the new CopyService to copy missing files
-		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
-		
-		if args.dry_run:
-			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
-		else:
-			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
-	
-	# Remove duplicates if requested
-	if args.remove_duplicates:
-		from src.utils.image_utils import remove_duplicates
-		logger.info(f"Removing duplicates in {new_dir} based on {args.duplicates_log}...")
-		
-		# Check if the duplicates log exists
-		if not os.path.exists(args.duplicates_log):
-			logger.error(f"Duplicates log file not found: {args.duplicates_log}")
-			logger.info("Run the script with --find-duplicates-only first to generate the duplicates log")
-			return 1
-		
-		# Remove duplicates
-		processed, removed = remove_duplicates(args.duplicates_log, args.dry_run)
-		
-		# Print summary
-		if args.dry_run:
-			logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
-		else:
-			logger.info(f"Removed {removed} of {processed} duplicate files")
-		
-		return 0
-	
-	# Rename files if requested
-	if args.rename_files:
-		from src.utils.image_utils import rename_files_remove_suffix
-		logger.info(f"Renaming files in {new_dir} by removing '{args.rename_suffix}' suffix...")
-		
-		# Rename files
-		processed, renamed = rename_files_remove_suffix(new_dir, args.rename_suffix, args.dry_run)
-		
-		# Print summary
-		if args.dry_run:
-			logger.info(f"[DRY RUN] Would rename {renamed} of {processed} files")
-		else:
-			logger.info(f"Renamed {renamed} of {processed} files")
-		
-		return 0
-	
-	# Check metadata status if requested
-	if args.check_metadata:
-		from src.utils.image_utils import check_metadata_status
-		logger.info(f"Checking metadata status for files in {new_dir}...")
-		
-		# Check metadata status
-		total, with_metadata, without_metadata = check_metadata_status(old_dir, new_dir, args.status_log)
-		
-		# Print summary
-		logger.info(f"Total files in {new_dir}: {total}")
-		logger.info(f"Files with metadata available: {with_metadata} ({with_metadata/total*100:.1f}%)")
-		logger.info(f"Files without metadata: {without_metadata} ({without_metadata/total*100:.1f}%)")
-		logger.info(f"Detailed status written to {args.status_log}")
-		
-		return 0
-	
-	# Find duplicates by name if requested
-	if args.find_duplicates_by_name:
-		from src.utils.image_utils import find_duplicates_by_name
-		logger.info(f"Finding duplicates by name in {new_dir}...")
-		
-		# Find and optionally remove duplicates by name
-		found, removed = find_duplicates_by_name(new_dir, args.rename_suffix, args.dry_run, args.name_duplicates_log)
-		
-		# Print summary
-		if args.dry_run:
-			logger.info(f"[DRY RUN] Would remove {found} duplicate files")
-		else:
-			logger.info(f"Removed {removed} of {found} duplicate files")
-		
-		return 0
-	
-	# Find duplicates if requested
+	# Handle specific advanced options first
 	if args.find_duplicates_only:
 		from src.utils.image_utils import find_duplicates
 		logger.info(f"Finding duplicates in {new_dir}...")
@@ -635,19 +565,112 @@ def main():
 			logger.info("No duplicates found")
 		return 0
 	
-	# Find metadata pairs
-	logger.info(f"Scanning directories: {old_dir} -> {new_dir}")
-	use_hash_matching = not args.no_hash_matching
-	metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
+	if args.check_metadata:
+		from src.utils.image_utils import check_metadata_status
+		logger.info(f"Checking metadata status for files in {new_dir}...")
+		total, with_metadata, without_metadata = check_metadata_status(old_dir, new_dir, args.status_log)
+		logger.info(f"Total files in {new_dir}: {total}")
+		logger.info(f"Files with metadata available: {with_metadata} ({with_metadata/total*100:.1f}%)")
+		logger.info(f"Files without metadata: {without_metadata} ({without_metadata/total*100:.1f}%)")
+		logger.info(f"Detailed status written to {args.status_log}")
+		return 0
+	
+	if args.find_duplicates_by_name:
+		from src.utils.image_utils import find_duplicates_by_name
+		logger.info(f"Finding duplicates by name in {new_dir}...")
+		found, removed = find_duplicates_by_name(new_dir, args.rename_suffix, args.dry_run, args.name_duplicates_log)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would remove {found} duplicate files")
+		else:
+			logger.info(f"Removed {removed} of {found} duplicate files")
+		return 0
+	
+	if args.rename_files:
+		from src.utils.image_utils import rename_files_remove_suffix
+		logger.info(f"Renaming files in {new_dir} by removing '{args.rename_suffix}' suffix...")
+		processed, renamed = rename_files_remove_suffix(new_dir, args.rename_suffix, args.dry_run)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would rename {renamed} of {processed} files")
+		else:
+			logger.info(f"Renamed {renamed} of {processed} files")
+		return 0
+	
+	if args.copy_to_new:
+		logger.info(f"Copying missing media files from {old_dir} to {new_dir}...")
+		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
+		else:
+			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
+		return 0
+	
+	if args.remove_duplicates:
+		from src.utils.image_utils import remove_duplicates
+		logger.info(f"Removing duplicates in {new_dir} based on {args.duplicates_log}...")
+		if not os.path.exists(args.duplicates_log):
+			logger.error(f"Duplicates log file not found: {args.duplicates_log}")
+			logger.info("Run the script with --find-duplicates-only first to generate the duplicates log")
+			return 1
+		processed, removed = remove_duplicates(args.duplicates_log, args.dry_run)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
+		else:
+			logger.info(f"Removed {removed} of {processed} duplicate files")
+		return 0
+	
+	# Default workflow: copy -> find duplicates -> remove duplicates -> apply metadata
+	# Step 1: Copy missing files from old to new (if not skipped)
+	if not args.skip_copy:
+		logger.info(f"Step 1/3: Copying missing media files from {old_dir} to {new_dir}...")
+		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
+		else:
+			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
+	
+	# Step 2: Find and remove duplicates (if not skipped)
+	if not args.skip_duplicates:
+		logger.info(f"Step 2/3: Finding and removing duplicates in {new_dir}...")
+		
+		# Find duplicates
+		from src.utils.image_utils import find_duplicates, remove_duplicates
+		duplicates = find_duplicates(new_dir, args.similarity)
+		
+		if duplicates:
+			dup_count = sum(len(dups) for dups in duplicates.values())
+			logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
+			logger.info(f"Results written to {args.duplicates_log}")
+			
+			# Remove duplicates
+			processed, removed = remove_duplicates(args.duplicates_log, args.dry_run)
+			
+			if args.dry_run:
+				logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
+			else:
+				logger.info(f"Removed {removed} of {processed} duplicate files")
+		else:
+			logger.info("No duplicates found")
+	
+	# Step 3: Apply metadata (if not skipped)
+	if not args.skip_metadata:
+		logger.info(f"Step 3/3: Applying metadata from {old_dir} to files in {new_dir}...")
+		
+		# Find metadata pairs
+		logger.info(f"Scanning directories: {old_dir} -> {new_dir}")
+		use_hash_matching = not args.no_hash_matching
+		metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
 										use_hash_matching=not args.no_hash_matching, 
 										similarity_threshold=args.similarity,
 										duplicates_log=args.duplicates_log)
-	
-	if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
-		logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")
-		metadata_pairs = metadata_pairs[:args.limit]
+		
+		if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
+			logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")
+			metadata_pairs = metadata_pairs[:args.limit]
+		else:
+			logger.info(f"Found {len(metadata_pairs)} matching file pairs")
 	else:
-		logger.info(f"Found {len(metadata_pairs)} matching file pairs")
+		logger.info("Skipping metadata application as requested")
+		return 0
 	
 	logger.info(f"Detailed processing log written to {args.processed_log}")
 	

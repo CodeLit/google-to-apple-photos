@@ -20,6 +20,28 @@ Perfect for anyone migrating their photo library from Google Photos to Apple Pho
 
 ## 🪜 Steps Overview
 
+### Simple Workflow (Recommended)
+
+1. **Export from Google Photos**  
+   Export photos and videos using **Google Takeout** into the `./old` folder.  
+   Ensure `.json` metadata files are included alongside media files.
+
+2. **Create New Directory**  
+   Create an empty `./new` directory where files will be copied and processed.
+
+3. **Run the Complete Workflow**  
+   Execute the script without any arguments to run the complete workflow:
+   ```bash
+   python3 main.py
+   ```
+   
+   This will automatically:
+   - Copy missing files from `./old` to `./new`
+   - Find and remove duplicates in `./new`
+   - Apply metadata from Google Takeout JSON files to files in `./new`
+
+### Advanced Workflow (Manual Steps)
+
 1. **Export from Google Photos**  
    Export photos and videos using **Google Takeout** into the `./old` folder.  
    Ensure `.json` metadata files are included alongside media files.
@@ -27,17 +49,16 @@ Perfect for anyone migrating their photo library from Google Photos to Apple Pho
 2. **Backup (Optional)**  
    Save your current library into the `./archive` folder as a precaution.
 
-3. **Export from Apple Photos** (или копирование из old)  
-   Export all photos and videos from **Apple Photos Library** into the `./new` folder.  
-   Use "Export Unmodified Originals" in Photos app for best results.  
-   Alternatively, use the `--copy-to-new` option to copy files from `./old` to `./new`:
+3. **Export from Apple Photos or Copy from Old**  
+   Either export photos from Apple Photos into `./new` folder ("Export Unmodified Originals"),  
+   or copy files from `./old` to `./new` using:
 
    ```bash
    python3 main.py --copy-to-new
    ```
 
-4. **Find Duplicates (Optional)**  
-   Identify duplicate files in your export to avoid redundant processing:
+4. **Find Duplicates**  
+   Identify duplicate files to avoid redundant processing:
 
    ```bash
    python3 main.py --find-duplicates-only
@@ -45,10 +66,16 @@ Perfect for anyone migrating their photo library from Google Photos to Apple Pho
 
    Results will be saved to `duplicates.log`.
 
-5. **Sync Metadata**  
+5. **Remove Duplicates**  
+   Remove duplicate files based on the log:
+   ```bash
+   python3 main.py --remove-duplicates
+   ```
+
+6. **Sync Metadata**  
    Run the synchronization script to transfer metadata from `./old` to `./new`:
    ```bash
-   python3 main.py
+   python3 main.py --skip-copy --skip-duplicates
    ```
 6. **Re-import into Apple Photos**  
    You can either manually import the files into Apple Photos, or use the built-in import feature:
