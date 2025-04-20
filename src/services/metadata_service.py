@@ -509,7 +509,8 @@ class MetadataService:
 
 	@staticmethod
 	def find_metadata_pairs(old_dir: str, new_dir: str, use_hash_matching: bool = True, 
-						   similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log') -> List[Tuple[str, str, PhotoMetadata]]:
+						   similarity_threshold: float = 0.98, duplicates_log: str = 'duplicates.log',
+						   skip_duplicates: bool = False) -> List[Tuple[str, str, PhotoMetadata]]:
 		"""
 		Find pairs of files between old and new directories with their metadata
 
@@ -632,9 +633,12 @@ class MetadataService:
 								writer.writerow([original, dup])
 					logger.info(f"Wrote duplicates to {duplicates_log}")
 					
-					# Remove duplicate files
-					removed_count = remove_duplicates(duplicates, dry_run=False)
-					logger.info(f"Removed {removed_count} duplicate files")
+					# Remove duplicate files only if not skipping duplicates
+					if not skip_duplicates:
+						removed_count = remove_duplicates(duplicates, dry_run=False)
+						logger.info(f"Removed {removed_count} duplicate files")
+					else:
+						logger.info("Skipping duplicate removal as requested")
 				except Exception as e:
 					logger.error(f"Error writing duplicates to CSV: {str(e)}")
 			else:

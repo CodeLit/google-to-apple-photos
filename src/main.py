@@ -381,10 +381,45 @@ def fix_metadata(args):
 	# Find files to process
 	files_to_process = []
 	
-	if args.failed_updates_log and os.path.isfile(args.failed_updates_log):
+	# Check if we have a metadata status file
+	if args.status_log and os.path.isfile(args.status_log):
+		try:
+			import csv
+			logger.info(f"Using metadata status file: {args.status_log}")
+			with open(args.status_log, 'r') as f:
+				reader = csv.reader(f)
+				# Skip header
+				header = next(reader, None)
+				if header and len(header) >= 2:
+					metadata_pairs = []
+					for row in reader:
+						if row and len(row) >= 2:
+							new_file = row[0]
+							json_file = row[1]
+							if os.path.exists(new_file) and os.path.exists(json_file):
+								files_to_process.append((new_file, json_file))
+							else:
+								if not os.path.exists(new_file):
+									logger.warning(f"New file not found: {new_file}")
+								if not os.path.exists(json_file):
+									logger.warning(f"JSON file not found: {json_file}")
+					logger.info(f"Found {len(files_to_process)} file pairs in metadata status file")
+					if not files_to_process:
+						logger.error("No valid file pairs found in metadata status file")
+						return 1
+					else:
+						logger.info(f"Processing {len(files_to_process)} file pairs from metadata status file")
+				else:
+					logger.error(f"Invalid header in metadata status file: {header}")
+					return 1
+		except Exception as e:
+			logger.error(f"Error reading metadata status file: {str(e)}")
+			return 1
+	elif args.failed_updates_log and os.path.isfile(args.failed_updates_log):
 		# Process files from the failed log
 		try:
 			import csv
+			logger.info(f"Using failed updates log: {args.failed_updates_log}")
 			with open(args.failed_updates_log, 'r') as f:
 				reader = csv.reader(f)
 				# Skip header
@@ -398,8 +433,7 @@ def fix_metadata(args):
 							file_paths.add(file_path)
 						else:
 							logger.warning(f"File not found: {file_path}")
-				
-				files_to_process = list(file_paths)
+				files_to_process = [(path, None) for path in file_paths]
 			logger.info(f"Found {len(files_to_process)} files in failed updates log")
 		except Exception as e:
 			logger.error(f"Error reading failed updates log: {str(e)}")
@@ -414,17 +448,18 @@ def fix_metadata(args):
 				logger.debug(f"Searching with pattern: {pattern} in directory {new_dir}")
 				count_before = len(files_to_process)
 				for file_path in Path(new_dir).glob(pattern):
-					files_to_process.append(str(file_path))
+					files_to_process.append((str(file_path), None))
 				count_after = len(files_to_process)
 				logger.debug(f"Found {count_after - count_before} files with pattern {pattern}")
 		logger.info(f"Found {len(files_to_process)} files with extensions {args.extensions}")
 	else:
 		# Process all files
+		logger.info(f"Scanning for all files in {new_dir}")
 		for file_path in Path(new_dir).glob("*.*"):
 			file_path_str = str(file_path)
 			# Skip XMP sidecar files and hidden files
 			if not file_path_str.endswith('.xmp') and not os.path.basename(file_path_str).startswith('.'):
-				files_to_process.append(file_path_str)
+				files_to_process.append((file_path_str, None))
 		logger.info(f"Found {len(files_to_process)} files to process")
 	
 	# Limit processing if requested
@@ -445,16 +480,66 @@ def fix_metadata(args):
 	with open(results_log_path, 'w') as results_log:
 		results_log.write("file_path,result,timestamp\n")
 	
-	for i, file_path in enumerate(files_to_process):
+	for i, file_info in enumerate(files_to_process):
+		if isinstance(file_info, tuple) and len(file_info) == 2:
+			file_path, json_path = file_info
+		else:
+			file_path = file_info
+			json_path = None
+		
 		logger.info(f"Processing file {i+1}/{len(files_to_process)}: {os.path.basename(file_path)}")
 		
 		try:
 			result = "failure"
-			if process_file(file_path, old_dir, args.dry_run, args.overwrite):
-				success_count += 1
-				result = "success"
+			if json_path and os.path.exists(json_path):
+				# If we have a specific JSON file, use it directly
+				logger.debug(f"Using JSON file: {json_path} for {file_path}")
+				metadata = MetadataService.extract_metadata_from_json(json_path)
+				if metadata:
+					# Convert Metadata object to exiftool arguments
+					exiftool_args = []
+					
+					# Add date fields if available
+					if metadata.date_taken:
+						exiftool_args.extend([
+							"-DateTimeOriginal=" + metadata.date_taken,
+							"-CreateDate=" + metadata.date_taken,
+							"-ModifyDate=" + metadata.date_taken
+						])
+					
+					# Add GPS coordinates if available
+					if metadata.latitude is not None and metadata.longitude is not None:
+						exiftool_args.extend([
+							"-GPSLatitude=" + str(metadata.latitude),
+							"-GPSLongitude=" + str(metadata.longitude),
+							"-GPSLatitudeRef=" + ("N" if metadata.latitude >= 0 else "S"),
+							"-GPSLongitudeRef=" + ("E" if metadata.longitude >= 0 else "W")
+						])
+					
+					# Add title if available
+					if metadata.title:
+						exiftool_args.append("-Title=" + metadata.title)
+					
+					if exiftool_args:
+						logger.debug(f"Applying metadata with args: {exiftool_args}")
+						if ExifToolService.apply_metadata(file_path, exiftool_args, args.dry_run):
+							success_count += 1
+							result = "success"
+						else:
+							failure_count += 1
+					else:
+						logger.warning(f"No metadata fields to apply for file: {file_path}")
+						failure_count += 1
+				else:
+					logger.warning(f"No metadata found in JSON file: {json_path}")
+					failure_count += 1
 			else:
-				failure_count += 1
+				# Otherwise, try to find matching JSON in old directory
+				if process_file(file_path, old_dir, args.dry_run, args.overwrite):
+					success_count += 1
+					result = "success"
+				else:
+					failure_count += 1
 			
 			# Log the result
 			with open(results_log_path, 'a') as results_log:
@@ -678,7 +763,8 @@ def main():
 		metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
 										use_hash_matching=not args.no_hash_matching, 
 										similarity_threshold=args.similarity,
-										duplicates_log=args.duplicates_log)
+										duplicates_log=args.duplicates_log,
+										skip_duplicates=args.skip_duplicates)
 		
 		if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
 			logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")
