@@ -71,3 +71,83 @@ The user will manually re-import the corrected files from `./new` into Apple Pho
 - It applies metadata from JSON files to images in test_images/new
 - It verifies that metadata was correctly applied
 - Current test uses real HEIC files from Google Takeout data
+
+# Comprehensive Media Format Test for Google to Apple Photos
+
+## Objective
+
+Create a comprehensive test suite that verifies the application's ability to handle all identified media formats in both the Google Takeout export and Apple Photos libraries.
+
+## Formats to Test
+
+### Image Formats
+
+- JPG/JPEG (most common)
+- HEIC (Apple's High Efficiency Image Format)
+- PNG
+- GIF
+- WEBP
+
+### Video Formats
+
+- MP4 (most common)
+- MOV (Apple's QuickTime Movie format)
+- MKV (Matroska Video format)
+- MPG (MPEG format)
+- 3GP (Mobile video format)
+- AVI (Audio Video Interleave format)
+
+## Test Requirements
+
+For each format, verify:
+
+1. **Metadata Extraction**
+
+   - Can extract creation date/time
+   - Can extract GPS coordinates (if present)
+   - Can extract title/description (if present)
+   - Handles missing metadata gracefully
+
+2. **Metadata Application**
+
+   - Can apply creation date/time
+   - Can apply GPS coordinates
+   - Can apply title/description
+   - Properly handles formats with limited metadata support
+
+3. **File Matching**
+
+   - Successfully matches files by name
+   - Successfully matches files by hash (perceptual hash for images)
+   - Handles edge cases (similar filenames, duplicate content)
+
+4. **Error Handling**
+   - Gracefully handles corrupted files
+   - Properly reports unsupported formats
+   - Logs appropriate warnings/errors
+
+## Implementation Approach
+
+1. Create a dedicated test directory with sample files of each format
+2. For each format, include:
+
+   - A clean sample file
+   - A file with complete metadata
+   - A file with partial metadata
+   - A corrupted file (if possible)
+
+3. Implement test cases that:
+
+   - Verify metadata extraction for each format
+   - Test metadata application and verify changes
+   - Test file matching algorithms with various scenarios
+   - Verify error handling and logging
+
+4. Create a summary report showing:
+   - Support level for each format
+   - Success rates for metadata operations
+   - Any limitations or issues discovered
+
+## Expected Output
+
+A detailed report of format compatibility, highlighting any formats that need special handling or have limitations.
