@@ -75,40 +75,29 @@ def are_duplicate_filenames(filename1: str, filename2: str) -> bool:
 
 def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
 	"""
-	Extract date from filename patterns like IMG-YYYYMMDD-WA0012.jpg or 2021-03-07_23-15-52.jpg
+	Extract date from filename patterns (расширено для разных вариантов)
 	
 	Args:
 		file_path: Path to the file
-		
 	Returns:
 		Tuple of (date string in YYYY:MM:DD format, match pattern description) or None if no match
 	"""
 	filename = os.path.basename(file_path)
-	
-	# Match IMG-YYYYMMDD pattern (e.g., IMG-20161231-WA0012.jpg)
+	# IMG-YYYYMMDD pattern
 	img_date_match = re.match(r'IMG-([0-9]{4})([0-9]{2})([0-9]{2}).*\..+', filename, re.IGNORECASE)
 	if img_date_match:
-		year = img_date_match.group(1)
-		month = img_date_match.group(2)
-		day = img_date_match.group(3)
-		
-		# Validate date components
+		year, month, day = img_date_match.group(1), img_date_match.group(2), img_date_match.group(3)
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			datetime(int(year), int(month), int(day))
-			
-			# Return formatted date string
 			return f"{year}:{month}:{day}", "IMG-YYYYMMDD pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
-	# Match photo_YYYY-MM-DD_HH-MM-SS pattern (e.g., photo_2021-02-27_10-45-21.jpg)
+	# photo_YYYY-MM-DD_HH-MM-SS
 	photo_date_time_match = re.match(r'photo_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2})\..+', filename)
 	if photo_date_time_match:
-		date_str = photo_date_time_match.group(1)  # YYYY-MM-DD
-		time_str = photo_date_time_match.group(2).replace('-', ':')  # HH:MM:SS
+		date_str = photo_date_time_match.group(1)
+		time_str = photo_date_time_match.group(2).replace('-', ':')
 		try:
 			from datetime import datetime
 			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
@@ -116,107 +105,129 @@ def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
 			return f"{year}:{month}:{day}", "photo_YYYY-MM-DD_HH-MM-SS pattern"
 		except ValueError:
 			pass
-
-	# Match YYYY-MM-DD_HH-MM-SS pattern (e.g., 2021-03-07_23-15-52.jpg)
-	date_time_match = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2}).*\..+', filename)
-	if date_time_match:
-		date_str = date_time_match.group(1)  # YYYY-MM-DD
-		time_str = date_time_match.group(2).replace('-', ':')  # HH:MM:SS
-		
-		# Validate date components
+	# photo_N_YYYY-MM-DD_HH-MM-SS
+	photo_n_date_time_match = re.match(r'photo_\d+_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2})\..+', filename)
+	if photo_n_date_time_match:
+		date_str = photo_n_date_time_match.group(1)
+		time_str = photo_n_date_time_match.group(2).replace('-', ':')
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
-			
-			# Return formatted date string (YYYY:MM:DD)
+			year, month, day = date_str.split('-')
+			return f"{year}:{month}:{day}", "photo_N_YYYY-MM-DD_HH-MM-SS pattern"
+		except ValueError:
+			pass
+	# YYYY-MM-DD_HH-MM-SS
+	date_time_match = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2}).*\..+', filename)
+	if date_time_match:
+		date_str = date_time_match.group(1)
+		time_str = date_time_match.group(2).replace('-', ':')
+		try:
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
 			year, month, day = date_str.split('-')
 			return f"{year}:{month}:{day}", "YYYY-MM-DD_HH-MM-SS pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
-	# Match YYYYMMDD_HHMMSS pattern (e.g., 20210307_231552.jpg)
+	# YYYY-MM-DD HH.MM.SS
+	date_space_match = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2}) ([0-9]{2}\.[0-9]{2}\.[0-9]{2})\..+', filename)
+	if date_space_match:
+		date_str = date_space_match.group(1)
+		time_str = date_space_match.group(2).replace('.', ':')
+		try:
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
+			year, month, day = date_str.split('-')
+			return f"{year}:{month}:{day}", "YYYY-MM-DD HH.MM.SS pattern"
+		except ValueError:
+			pass
+	# YYYYMMDD_HHMMSS
 	date_time_compact_match = re.match(r'([0-9]{8})_([0-9]{6}).*\..+', filename)
 	if date_time_compact_match:
-		date_str = date_time_compact_match.group(1)  # YYYYMMDD
-		time_str = date_time_compact_match.group(2)  # HHMMSS
-		
-		# Validate date components
+		date_str = date_time_compact_match.group(1)
+		time_str = date_time_compact_match.group(2)
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y%m%d %H%M%S')
-			
-			# Return formatted date string (YYYY:MM:DD)
 			year = date_str[0:4]
 			month = date_str[4:6]
 			day = date_str[6:8]
 			return f"{year}:{month}:{day}", "YYYYMMDD_HHMMSS pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
-	# Match WhatsApp pattern (e.g., IMG-20210307-WA0001.jpg)
+	# WhatsApp IMG/VID-YYYYMMDD-WA
 	whatsapp_match = re.match(r'(?:IMG|VID)-([0-9]{4})([0-9]{2})([0-9]{2})-WA[0-9]+\..+', filename, re.IGNORECASE)
 	if whatsapp_match:
-		year = whatsapp_match.group(1)
-		month = whatsapp_match.group(2)
-		day = whatsapp_match.group(3)
-		
-		# Validate date components
+		year, month, day = whatsapp_match.group(1), whatsapp_match.group(2), whatsapp_match.group(3)
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			datetime(int(year), int(month), int(day))
-			
-			# Return formatted date string
 			return f"{year}:{month}:{day}", "WhatsApp pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
-	# Match Screenshot pattern (e.g., Screenshot_20210307-231552.jpg)
+	# Screenshot_YYYYMMDD-HHMMSS
 	screenshot_match = re.match(r'Screenshot_([0-9]{8})-([0-9]{6}).*\..+', filename, re.IGNORECASE)
 	if screenshot_match:
-		date_str = screenshot_match.group(1)  # YYYYMMDD
-		time_str = screenshot_match.group(2)  # HHMMSS
-		
-		# Validate date components
+		date_str = screenshot_match.group(1)
+		time_str = screenshot_match.group(2)
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y%m%d %H%M%S')
-			
-			# Return formatted date string (YYYY:MM:DD)
 			year = date_str[0:4]
 			month = date_str[4:6]
 			day = date_str[6:8]
 			return f"{year}:{month}:{day}", "Screenshot pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
-	# Match Google Takeout IMG pattern (e.g., IMG20210503102138.jpg or IMG20210503102004_06.jpg)
+	# Google Takeout IMG20210503102138.jpg
 	google_img_match = re.match(r'(?:IMG|VID)([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})(?:_[0-9]+)?\..+', filename, re.IGNORECASE)
 	if google_img_match:
-		year = google_img_match.group(1)
-		month = google_img_match.group(2)
-		day = google_img_match.group(3)
-		time_str = google_img_match.group(4)  # HHMMSS
-		
-		# Validate date components
+		year, month, day = google_img_match.group(1), google_img_match.group(2), google_img_match.group(3)
+		time_str = google_img_match.group(4)
 		try:
-			# Check if it's a valid date
 			from datetime import datetime
 			date_obj = datetime.strptime(f"{year}{month}{day} {time_str}", '%Y%m%d %H%M%S')
-			
-			# Return formatted date string
 			return f"{year}:{month}:{day}", "Google Takeout pattern"
 		except ValueError:
-			# Invalid date
 			pass
-	
+	# IMG_YYYYMMDD_HHMMSS
+	img_underscore_match = re.match(r'IMG_([0-9]{8})_([0-9]{6})(?:_\d+)?\..+', filename, re.IGNORECASE)
+	if img_underscore_match:
+		date_str = img_underscore_match.group(1)
+		time_str = img_underscore_match.group(2)
+		try:
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y%m%d %H%M%S')
+			year = date_str[0:4]
+			month = date_str[4:6]
+			day = date_str[6:8]
+			return f"{year}:{month}:{day}", "IMG_YYYYMMDD_HHMMSS pattern"
+		except ValueError:
+			pass
+	# camphoto_TIMESTAMP
+	camphoto_match = re.match(r'camphoto_([0-9]{10})(?:\(\d+\))?\..+', filename, re.IGNORECASE)
+	if camphoto_match:
+		timestamp = int(camphoto_match.group(1))
+		try:
+			from datetime import datetime
+			dt = datetime.fromtimestamp(timestamp)
+			return f"{dt.year}:{dt.month:02d}:{dt.day:02d}", "camphoto_TIMESTAMP pattern"
+		except Exception:
+			pass
+	# YYYY-MM-DD в кириллических названиях
+	cyrillic_date_match = re.search(r'([0-9]{4})-([0-9]{2})-([0-9]{2})', filename)
+	if cyrillic_date_match:
+		year, month, day = cyrillic_date_match.group(1), cyrillic_date_match.group(2), cyrillic_date_match.group(3)
+		try:
+			from datetime import datetime
+			datetime(int(year), int(month), int(day))
+			return f"{year}:{month}:{day}", "Cyrillic filename with date pattern"
+		except Exception:
+			pass
+	# IMG_NNNN.jpg (без даты)
+	img_number_match = re.match(r'IMG_([0-9]{4})\..+', filename, re.IGNORECASE)
+	if img_number_match:
+		return None
 	return None
 
 
