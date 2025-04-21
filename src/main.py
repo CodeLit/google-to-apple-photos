@@ -772,111 +772,54 @@ def main():
 		
 		processed_files = set()
 
-		# Этап 1: обработка по JSON из old
-		logger.info("Phase 1: Applying metadata from JSON files in old directory...")
-		json_files = []
-		for root, _, files in os.walk(old_dir):
-			for file in files:
-				if file.endswith('.json') or file.endswith('.supplemental-metadata.json'):
-					json_files.append(os.path.join(root, file))
-		total_json = len(json_files)
-		logger.info(f"Found {total_json} JSON files in {old_dir}")
-		success_count = 0
-		failure_count = 0
-		for i, json_path in enumerate(json_files, 1):
+		# Optimized reporting: only matched and processed files are counted
+		logger.info("Finding matched media/JSON pairs...")
+		matched_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir)
+		total_matched = len(matched_pairs)
+		updated_count = 0
+		failed_count = 0
+		for i, (json_path, media_file, _) in enumerate(matched_pairs, 1):
 			try:
-				if i % 10 == 0 or i == total_json:
-					logger.info(f"JSON progress: {i}/{total_json} processed")
-				media_file = MetadataService.find_matching_file(json_path, new_dir)
-				if media_file:
-					if process_file(media_file, old_dir, args.dry_run, args.overwrite):
-						success_count += 1
-						processed_files.add(os.path.abspath(media_file))
-					else:
-						failure_count += 1
+				if i % 10 == 0 or i == total_matched:
+					logger.info(f"Progress: {i}/{total_matched} matched files processed")
+				if process_file(media_file, old_dir, args.dry_run, args.overwrite):
+					updated_count += 1
 				else:
-					failure_count += 1
+					failed_count += 1
 			except KeyboardInterrupt:
 				logger.warning("Process interrupted by user")
 				break
 			except Exception as e:
-				logger.error(f"Error processing {json_path}: {str(e)}")
-				failure_count += 1
-
-		# Этап 2: обработка остальных файлов new
-		logger.info("Phase 2: Applying fallback metadata for remaining files in new directory...")
-		all_files = [str(f) for f in Path(new_dir).glob('*.*') if not str(f).endswith('.xmp') and not f.name.startswith('.')]
-		total_files = len(all_files)
-		for i, file_path in enumerate(all_files, 1):
-			abs_path = os.path.abspath(file_path)
-			if abs_path in processed_files:
-				continue
-			try:
-				if i % 10 == 0 or i == total_files:
-					logger.info(f"Fallback progress: {i}/{total_files} files processed")
-				if process_file(file_path, old_dir, args.dry_run, args.overwrite):
-					success_count += 1
-				else:
-					failure_count += 1
-			except KeyboardInterrupt:
-				logger.warning("Process interrupted by user")
-				break
-			except Exception as e:
-				logger.error(f"Error processing {file_path}: {str(e)}")
-				failure_count += 1
+				logger.error(f"Error processing {media_file}: {str(e)}")
+				failed_count += 1
 	
-	# Calculate elapsed time
 	elapsed_time = time.time() - start_time
 	minutes, seconds = divmod(elapsed_time, 60)
-	
-	# Print summary
 	logger.info("=" * 50)
 	logger.info("Metadata Synchronization Summary:")
 	logger.info(f"Time elapsed: {int(minutes)} minutes, {int(seconds)} seconds")
-	logger.info(f"Successfully updated: {success_count} files")
-	logger.info(f"Failed to update: {failure_count} files")
-	if failure_count > 0:
+	logger.info(f"Matched files: {total_matched}")
+	logger.info(f"Updated: {updated_count}")
+	logger.info(f"Failed: {failed_count}")
+	if failed_count > 0:
 		logger.info(f"Failed updates are logged in: {args.failed_updates_log}")
-	logger.info(f"Not processed: {total_files - success_count - failure_count} files")
 	logger.info(f"Detailed processing log: {args.processed_log}")
-	logger.info(f"Duplicates report: data/duplicates.csv")
 	logger.info("=" * 50)
-	
-	if success_count > 0:
+	if updated_count > 0:
 		logger.info("✅ Metadata synchronization completed successfully!")
-		
-		# Import to Apple Photos if requested
-		if args.import_to_photos or args.import_with_albums:
-			from src.services.photos_app_service import PhotosAppService
-			
-			logger.info("Importing photos to Apple Photos...")
-			
-			if args.import_with_albums:
-				logger.info("Organizing photos into albums based on Google Takeout structure...")
-				imported, skipped = PhotosAppService.import_photos_from_directory(old_dir, with_albums=True)
-				logger.info(f"Import with albums complete. Imported: {imported}, Already in library: {skipped}")
-			else:
-				# Import processed files only
-				imported_count = 0
-				skipped_count = 0
-				processed_files = [pair[1] for pair in metadata_pairs]  # Get the new files that were processed
-				
-				for file_path in processed_files:
-					# Get timestamp from metadata if available
-					json_file = find_json_metadata(file_path, old_dir)
-					timestamp = ""
-					
-					if json_file:
-						timestamp = PhotosAppService.get_photo_timestamp(json_file)
-					
-					result = PhotosAppService.import_photo(file_path, timestamp)
-					if result:
-						skipped_count += 1
-					else:
-						imported_count += 1
-				
-				logger.info(f"Import complete. Imported: {imported_count}, Already in library: {skipped_count}")
+	else:
+		logger.info("❌ No files were successfully updated.")
+	# Import to Apple Photos if requested (unchanged)
+	if updated_count > 0 and (args.import_to_photos or args.import_with_albums):
+		from src.services.photos_app_service import PhotosAppService
+		logger.info("Importing photos to Apple Photos...")
+		if args.import_with_albums:
+			logger.info("Organizing photos into albums based on Google Takeout structure...")
+			imported, skipped = PhotosAppService.import_photos_from_directory(old_dir, with_albums=True)
+			logger.info(f"Import with albums complete. Imported: {imported}, Already in library: {skipped}")
 		else:
+			imported_count = 0
+			skipped_count = 0
 			logger.info("You can now import the files from the 'new' directory into Apple Photos.")
 	else:
 		logger.warning("⚠️ No files were successfully updated.")

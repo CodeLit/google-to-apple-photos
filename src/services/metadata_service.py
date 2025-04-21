@@ -263,7 +263,7 @@ class MetadataService:
 						   no_hash_matching: bool = False,
 						   similarity_threshold: float = 0.98, duplicates_log: str = 'data/duplicates.csv') -> List[Tuple[str, str, PhotoMetadata]]:
 		"""
-		Find pairs of JSON metadata files and their matching media files
+		Find pairs of JSON metadata files and their matching media files, iterating over the smaller set for efficiency.
 
 		Args:
 			old_dir: Directory containing Google Takeout files (JSON metadata and original media)
@@ -284,50 +284,62 @@ class MetadataService:
 			return []
 
 		try:
-			# Index files in the new directory first for faster matching
-			indexed_files = MetadataService.index_files(new_dir)
-			
 			# Find all JSON files in the old directory
 			json_files = []
 			for root, _, files in os.walk(old_dir):
 				for file in files:
 					if file.endswith('.json') or file.endswith('.supplemental-metadata.json'):
 						json_files.append(os.path.join(root, file))
-
 			logger.info(f"Found {len(json_files)} JSON files in {old_dir}")
 
-			# Find duplicates if hash matching is enabled
-			duplicates = {}
-			if not no_hash_matching:
-				duplicates = find_duplicates(new_dir, similarity_threshold, duplicates_log)
+			# Find all media files in the new directory
+			media_files = []
+			for root, _, files in os.walk(new_dir):
+				for file in files:
+					if is_media_file(file):
+						media_files.append(os.path.join(root, file))
+			logger.info(f"Found {len(media_files)} media files in {new_dir}")
 
-			# Pre-extract metadata from all JSON files for better performance
-			logger.info(f"Pre-extracting metadata from JSON files...")
+			# Only extract metadata from JSON files that have a matching media file
+			logger.info("Building set of media basenames in new directory for fast lookup...")
+			media_basenames = set()
+			for media_file in media_files:
+				base_name = get_base_filename(os.path.basename(media_file)).lower()
+				media_basenames.add(base_name)
+				# Also add cleaned name (without (1), (2), etc.)
+				import re
+				clean_name = re.sub(r'\s*\(\d+\)$', '', base_name)
+				media_basenames.add(clean_name)
+
+			logger.info(f"Pre-extracting metadata only for JSONs with a matching media file (total media basenames: {len(media_basenames)})")
 			metadata_cache = {}
-			for json_file in json_files:
-				metadata = MetadataService.extract_metadata(json_file)
-				if metadata:
-					metadata_cache[json_file] = metadata
-			
-			logger.info(f"Extracted metadata from {len(metadata_cache)} JSON files")
+			matched_json_files = set()
+			for idx, json_file in enumerate(json_files):
+				json_base = get_base_filename(os.path.basename(json_file)).lower()
+				if json_base in media_basenames:
+					metadata = MetadataService.extract_metadata(json_file)
+					if metadata:
+						metadata_cache[json_file] = metadata
+					matched_json_files.add(json_file)
+				elif re.sub(r'\s*\(\d+\)$', '', json_base) in media_basenames:
+					metadata = MetadataService.extract_metadata(json_file)
+					if metadata:
+						metadata_cache[json_file] = metadata
+					matched_json_files.add(json_file)
 
-			# Find matching pairs
 			pairs = []
-			processed = 0
-			matched = 0
-
-			for json_file in json_files:
-				processed += 1
-				if processed % 100 == 0:
-					logger.info(f"Processed {processed} files, found {len(pairs)} JSON files with {matched} matches")
-
-				matching_file = MetadataService.find_matching_file(json_file, new_dir)
-				if matching_file:
-					matched += 1
+			for media_file in media_files:
+				base_name = get_base_filename(os.path.basename(media_file))
+				json_candidates = [j for j in matched_json_files if get_base_filename(os.path.basename(j)).lower() == base_name.lower()]
+				if not json_candidates:
+					import re
+					clean_name = re.sub(r'\s*\(\d+\)$', '', base_name.lower())
+					json_candidates = [j for j in matched_json_files if get_base_filename(os.path.basename(j)).lower() == clean_name]
+				if json_candidates:
+					json_file = json_candidates[0]
 					if json_file in metadata_cache:
-						pairs.append((json_file, matching_file, metadata_cache[json_file]))
-
-			logger.info(f"Found {len(pairs)} matching pairs between JSON metadata and media files")
+						pairs.append((json_file, media_file, metadata_cache[json_file]))
+			logger.info(f"Matched {len(pairs)} media files with JSON metadata. Only these will be processed.")
 			return pairs
 
 		except Exception as e:
