@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.services.exiftool_service import ExifToolService
 from src.services.metadata_service import MetadataService
+
 from src.services.copy_service import CopyService
 from src.utils.file_utils import extract_date_from_filename
 
@@ -589,7 +590,6 @@ def fix_metadata(args):
 	else:
 		logger.info("❌ No files were successfully processed.")
 	
-	return 0
 
 
 def main():
@@ -681,8 +681,7 @@ def main():
 			logger.info(f"Results written to {args.duplicates_log}")
 		else:
 			logger.info("No duplicates found")
-		return 0
-	
+		
 	if args.check_metadata:
 		from src.utils.image_utils import check_metadata_status
 		logger.info(f"Checking metadata status for files in {new_dir}...")
@@ -691,8 +690,7 @@ def main():
 		logger.info(f"Files with metadata available: {with_metadata} ({with_metadata/total*100:.1f}%)")
 		logger.info(f"Files without metadata: {without_metadata} ({without_metadata/total*100:.1f}%)")
 		logger.info(f"Detailed status written to {args.status_log}")
-		return 0
-	
+		
 	if args.find_duplicates_by_name:
 		from src.utils.image_utils import find_duplicates_by_name
 		logger.info(f"Finding duplicates by name in {new_dir}...")
@@ -701,8 +699,7 @@ def main():
 			logger.info(f"[DRY RUN] Would remove {found} duplicate files")
 		else:
 			logger.info(f"Removed {removed} of {found} duplicate files")
-		return 0
-	
+		
 	if args.rename_files:
 		from src.utils.image_utils import rename_files_remove_suffix
 		logger.info(f"Renaming files in {new_dir} by removing '{args.rename_suffix}' suffix...")
@@ -711,8 +708,7 @@ def main():
 			logger.info(f"[DRY RUN] Would rename {renamed} of {processed} files")
 		else:
 			logger.info(f"Renamed {renamed} of {processed} files")
-		return 0
-	
+		
 	if args.copy_to_new:
 		logger.info(f"Copying missing media files from {old_dir} to {new_dir}...")
 		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
@@ -720,8 +716,7 @@ def main():
 			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
 		else:
 			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
-		return 0
-	
+		
 	if args.remove_duplicates:
 		from src.utils.image_utils import remove_duplicates
 		logger.info(f"Removing duplicates in {new_dir} based on {args.duplicates_log}...")
@@ -734,8 +729,7 @@ def main():
 			logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
 		else:
 			logger.info(f"Removed {removed} of {processed} duplicate files")
-		return 0
-	
+		
 	# Default workflow: copy -> find duplicates -> remove duplicates -> apply metadata
 	# Step 1: Copy missing files from old to new (if not skipped)
 	if not args.skip_copy:
@@ -773,72 +767,63 @@ def main():
 	if not args.skip_metadata:
 		logger.info(f"Step 3/3: Applying metadata from {old_dir} to files in {new_dir}...")
 		
-		# Find metadata pairs
-		logger.info(f"Scanning directories: {old_dir} -> {new_dir}")
-		use_hash_matching = not args.no_hash_matching
-		metadata_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir, 
-										use_hash_matching=not args.no_hash_matching, 
-										similarity_threshold=args.similarity,
-										duplicates_log=args.duplicates_log,
-										skip_duplicates=args.skip_duplicates)
+		# Двухэтапная обработка: сначала по JSON, потом по остальным файлам
+		from pathlib import Path
 		
-		if args.limit and args.limit > 0 and args.limit < len(metadata_pairs):
-			logger.info(f"Limiting processing to {args.limit} of {len(metadata_pairs)} pairs")
-			metadata_pairs = metadata_pairs[:args.limit]
-		else:
-			logger.info(f"Found {len(metadata_pairs)} matching file pairs")
-	else:
-		logger.info("Skipping metadata application as requested")
-		return 0
-	
-	logger.info(f"Detailed processing log written to {args.processed_log}")
-	
-	# Process files
-	success_count = 0
-	failure_count = 0
-	total_pairs = len(metadata_pairs)
-	
-	for i, (json_file, new_file, metadata) in enumerate(metadata_pairs, 1):
-		try:
-			# Log progress
-			if i % 10 == 0 or i == total_pairs:
-				logger.info(f"Progress: {i}/{total_pairs} files processed")
-			
-			# Get exiftool arguments
-			exif_args = metadata.to_exiftool_args()
-			
-			# Apply metadata
-			if ExifToolService.apply_metadata(new_file, exif_args, args.dry_run):
-				success_count += 1
-			else:
-				# Try specialized handling for problematic file types
-				file_ext = os.path.splitext(new_file)[1].lower()
-				# Check if this is a problematic file type (MPG, AVI, PNG, AAE)
-				if file_ext.lower() in ['.mpg', '.mpeg', '.avi', '.png', '.aae']:
-					logger.info(f"Attempting specialized metadata handling for {new_file}")
-					if not args.dry_run and ExifToolService.apply_specialized_metadata_for_problematic_files(new_file):
-						logger.info(f"Successfully applied specialized metadata to {new_file}")
+		processed_files = set()
+
+		# Этап 1: обработка по JSON из old
+		logger.info("Phase 1: Applying metadata from JSON files in old directory...")
+		json_files = []
+		for root, _, files in os.walk(old_dir):
+			for file in files:
+				if file.endswith('.json') or file.endswith('.supplemental-metadata.json'):
+					json_files.append(os.path.join(root, file))
+		total_json = len(json_files)
+		logger.info(f"Found {total_json} JSON files in {old_dir}")
+		success_count = 0
+		failure_count = 0
+		for i, json_path in enumerate(json_files, 1):
+			try:
+				if i % 10 == 0 or i == total_json:
+					logger.info(f"JSON progress: {i}/{total_json} processed")
+				media_file = MetadataService.find_matching_file(json_path, new_dir)
+				if media_file:
+					if process_file(media_file, old_dir, args.dry_run, args.overwrite):
 						success_count += 1
+						processed_files.add(os.path.abspath(media_file))
 					else:
 						failure_count += 1
-						# Log the failed update with a specific error message
-						error_message = f"Failed to apply metadata even with specialized handling for {file_ext} file"
-						MetadataService.log_failed_update(new_file, error_message)
 				else:
 					failure_count += 1
-					# Log the failed update with a more specific error message
-					error_message = "Failed to apply complete metadata - partial or no metadata was applied"
-					MetadataService.log_failed_update(new_file, error_message)
-				
-		except KeyboardInterrupt:
-			logger.warning("Process interrupted by user")
-			break
-		except Exception as e:
-			error_message = str(e)
-			logger.error(f"Error processing {json_file}: {error_message}")
-			failure_count += 1
-			# Log the failed update with the specific error message
-			MetadataService.log_failed_update(new_file, error_message)
+			except KeyboardInterrupt:
+				logger.warning("Process interrupted by user")
+				break
+			except Exception as e:
+				logger.error(f"Error processing {json_path}: {str(e)}")
+				failure_count += 1
+
+		# Этап 2: обработка остальных файлов new
+		logger.info("Phase 2: Applying fallback metadata for remaining files in new directory...")
+		all_files = [str(f) for f in Path(new_dir).glob('*.*') if not str(f).endswith('.xmp') and not f.name.startswith('.')]
+		total_files = len(all_files)
+		for i, file_path in enumerate(all_files, 1):
+			abs_path = os.path.abspath(file_path)
+			if abs_path in processed_files:
+				continue
+			try:
+				if i % 10 == 0 or i == total_files:
+					logger.info(f"Fallback progress: {i}/{total_files} files processed")
+				if process_file(file_path, old_dir, args.dry_run, args.overwrite):
+					success_count += 1
+				else:
+					failure_count += 1
+			except KeyboardInterrupt:
+				logger.warning("Process interrupted by user")
+				break
+			except Exception as e:
+				logger.error(f"Error processing {file_path}: {str(e)}")
+				failure_count += 1
 	
 	# Calculate elapsed time
 	elapsed_time = time.time() - start_time
@@ -852,7 +837,7 @@ def main():
 	logger.info(f"Failed to update: {failure_count} files")
 	if failure_count > 0:
 		logger.info(f"Failed updates are logged in: {args.failed_updates_log}")
-	logger.info(f"Not processed: {total_pairs - success_count - failure_count} files")
+	logger.info(f"Not processed: {total_files - success_count - failure_count} files")
 	logger.info(f"Detailed processing log: {args.processed_log}")
 	logger.info(f"Duplicates report: data/duplicates.csv")
 	logger.info("=" * 50)
@@ -896,7 +881,6 @@ def main():
 	else:
 		logger.warning("⚠️ No files were successfully updated.")
 	
-	return 0
 
 
 if __name__ == '__main__':
