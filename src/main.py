@@ -328,23 +328,39 @@ def process_file(file_path, old_dir, dry_run=False, overwrite=False):
 	"""
 	logger.info(f"Processing {os.path.basename(file_path)}")
 	
-	# Find corresponding JSON metadata
+	# Find corresponding JSON metadata or fallback to filename-based date
 	metadata = find_json_metadata(file_path, old_dir)
 	if not metadata:
-		logger.warning(f"No metadata found for {file_path}")
-		return False
+		from src.utils.file_utils import extract_date_from_filename
+		date_info = extract_date_from_filename(file_path)
+		if date_info:
+			date_str, pattern_desc = date_info
+			from datetime import datetime
+			# Try to extract time if possible
+			filename = os.path.basename(file_path)
+			time_match = None
+			# photo_YYYY-MM-DD_HH-MM-SS
+			photo_time = re.match(r'photo_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2})\..+', filename)
+			if photo_time:
+				dt = datetime.strptime(f"{photo_time.group(1)} {photo_time.group(2).replace('-', ':')}", '%Y-%m-%d %H:%M:%S')
+			else:
+				# YYYY-MM-DD_HH-MM-SS
+				date_time = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2}).*\..+', filename)
+				if date_time:
+					dt = datetime.strptime(f"{date_time.group(1)} {date_time.group(2).replace('-', ':')}", '%Y-%m-%d %H:%M:%S')
+				else:
+					dt = datetime.strptime(date_str, '%Y:%m:%d')
+			metadata = {'date_taken': dt, 'json_path': None, 'data': None}
+		else:
+			logger.warning(f"No metadata or valid date found for {file_path}")
+			return False
 	
-	# Get file extension
 	file_ext = os.path.splitext(file_path)[1].lower()
-	
-	# For video files and other problematic formats, create XMP sidecar
 	if file_ext in ['.mpg', '.avi', '.png', '.aae']:
 		return create_xmp_sidecar(file_path, metadata, dry_run, overwrite)
 	else:
-		# For other file types, try direct update first
 		success = update_file_metadata(file_path, metadata, dry_run)
 		if not success:
-			# If direct update fails, try sidecar as fallback
 			logger.info(f"Direct update failed for {file_path}, trying sidecar approach")
 			return create_xmp_sidecar(file_path, metadata, dry_run, overwrite)
 		return success

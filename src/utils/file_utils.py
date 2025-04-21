@@ -104,6 +104,19 @@ def extract_date_from_filename(file_path: str) -> Optional[Tuple[str, str]]:
 			# Invalid date
 			pass
 	
+	# Match photo_YYYY-MM-DD_HH-MM-SS pattern (e.g., photo_2021-02-27_10-45-21.jpg)
+	photo_date_time_match = re.match(r'photo_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2})\..+', filename)
+	if photo_date_time_match:
+		date_str = photo_date_time_match.group(1)  # YYYY-MM-DD
+		time_str = photo_date_time_match.group(2).replace('-', ':')  # HH:MM:SS
+		try:
+			from datetime import datetime
+			date_obj = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
+			year, month, day = date_str.split('-')
+			return f"{year}:{month}:{day}", "photo_YYYY-MM-DD_HH-MM-SS pattern"
+		except ValueError:
+			pass
+
 	# Match YYYY-MM-DD_HH-MM-SS pattern (e.g., 2021-03-07_23-15-52.jpg)
 	date_time_match = re.match(r'([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2}-[0-9]{2}-[0-9]{2}).*\..+', filename)
 	if date_time_match:
