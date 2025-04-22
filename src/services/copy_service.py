@@ -55,11 +55,11 @@ class CopyService:
 		
 		# Load hash caches for old and new directories
 		logger.info("Loading hash caches...")
-		old_hash_cache = load_image_hashes('data/old_image_hashes.csv')
-		logger.info(f"Loaded {len(old_hash_cache)} hashes from old cache")
-		
-		new_hash_cache = load_image_hashes('data/new_image_hashes.csv')
-		logger.info(f"Loaded {len(new_hash_cache)} hashes from new cache")
+		# Load combined image_hashes.csv and split into old/new
+		hash_cache = load_image_hashes('data/image_hashes.csv')
+		old_hash_cache = {k[4:]: v for k, v in hash_cache.items() if k.startswith('old:')}
+		new_hash_cache = {k[4:]: v for k, v in hash_cache.items() if k.startswith('new:')}
+		logger.info(f"Loaded {len(old_hash_cache)} old and {len(new_hash_cache)} new hashes from image_hashes.csv")
 		
 		# Compute hashes for files in new directory
 		logger.info("Computing hashes for files in new directory...")
@@ -74,11 +74,11 @@ class CopyService:
 			if (i + 1) % 500 == 0:
 				logger.info(f"Computed hashes for {i + 1}/{len(new_files)} files in new directory")
 				# Save new hash cache periodically
-				save_image_hashes(new_hash_cache, 'data/new_image_hashes.csv')
+				save_image_hashes({**{f'old:{k}': v for k, v in old_hash_cache.items()}, **{f'new:{k}': v for k, v in new_hash_cache.items()}}, 'data/image_hashes.csv')
 		
 		logger.info(f"Computed hashes for {len(new_file_hashes)} files in new directory")
-		# Save new hash cache
-		save_image_hashes(new_hash_cache, 'data/new_image_hashes.csv')
+		# Save combined hash cache
+		save_image_hashes({**{f'old:{k}': v for k, v in old_hash_cache.items()}, **{f'new:{k}': v for k, v in new_hash_cache.items()}}, 'data/image_hashes.csv')
 		
 		# Find files that exist in old but not in new based on hash
 		logger.info("Finding missing files based on hash comparison...")
@@ -94,11 +94,11 @@ class CopyService:
 			# Log progress every 500 files
 			if (i + 1) % 500 == 0:
 				logger.info(f"Processed {i + 1}/{len(old_files)} files from old directory")
-				# Save old hash cache periodically
-				save_image_hashes(old_hash_cache, 'data/old_image_hashes.csv')
+				# Save combined hash cache periodically
+				save_image_hashes({**{f'old:{k}': v for k, v in old_hash_cache.items()}, **{f'new:{k}': v for k, v in new_hash_cache.items()}}, 'data/image_hashes.csv')
 		
-		# Save old hash cache
-		save_image_hashes(old_hash_cache, 'data/old_image_hashes.csv')
+		# Save combined hash cache
+		save_image_hashes({**{f'old:{k}': v for k, v in old_hash_cache.items()}, **{f'new:{k}': v for k, v in new_hash_cache.items()}}, 'data/image_hashes.csv')
 		
 		logger.info(f"Found {len(missing_files)} files in {old_dir} that don't exist in {new_dir} based on hash comparison")
 		
