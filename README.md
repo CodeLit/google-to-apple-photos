@@ -1,5 +1,13 @@
 # 📸 Google to Apple Photos Metadata Synchronizer
 
+> **⚠️ DISCLAIMER: Avoid using this library unless you have advanced needs!**
+>
+> For most users, use the official Google Takeout transfer tool instead:
+> [https://takeout.google.com/takeout/transfer/custom/photos](https://takeout.google.com/takeout/transfer/custom/photos)
+>
+> Only use this library if you have advanced cases (e.g., deleting duplicates or other special workflows).
+
+
 ## 🎯 Objective
 
 Fix incorrect photo and video metadata (especially dates, GPS coordinates, and titles) in files exported from Apple Photos by using accurate metadata from Google Takeout JSON files. This tool helps ensure your media files retain their original metadata when migrating from Google Photos to Apple Photos.
