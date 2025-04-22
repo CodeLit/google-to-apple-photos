@@ -314,6 +314,30 @@ def update_file_metadata(file_path, metadata, dry_run=False):
 		result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
 		if result.returncode == 0:
 			logger.info(f"Successfully updated metadata for {file_path}")
+
+			# Try to update filesystem creation date (macOS only)
+			try:
+				import platform
+				if platform.system() == 'Darwin':
+					# SetFile (macOS, needs Xcode Command Line Tools)
+					creation_date = metadata['date_taken'].strftime('%m/%d/%Y %H:%M:%S')
+					setfile_cmd = [
+						'SetFile',
+						'-d', creation_date,
+						file_path
+					]
+					try:
+						result_setfile = subprocess.run(setfile_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+						if result_setfile.returncode != 0:
+							logger.warning(f"SetFile failed for {file_path}: {result_setfile.stderr.strip()}")
+					except Exception as e:
+						logger.warning(f"SetFile exception for {file_path}: {str(e)}")
+				# Always update mtime/atime
+				mtime = atime = metadata['date_taken'].timestamp()
+				os.utime(file_path, (atime, mtime))
+			except Exception as e:
+				logger.warning(f"Failed to update filesystem times for {file_path}: {str(e)}")
+
 			return True
 		else:
 			logger.error(f"Failed to update metadata for {file_path}: {result.stderr}")
