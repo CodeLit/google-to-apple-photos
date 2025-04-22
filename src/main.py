@@ -795,7 +795,10 @@ def main():
 		
 		# Двухэтапная обработка: сначала по JSON, потом по остальным файлам
 		from pathlib import Path
-		
+		try:
+			from tqdm import tqdm
+		except ImportError:
+			tqdm = lambda x: x
 		processed_files = set()
 
 		# Optimized reporting: only matched and processed files are counted
@@ -804,10 +807,10 @@ def main():
 		total_matched = len(matched_pairs)
 		updated_count = 0
 		failed_count = 0
-		for i, (json_path, media_file, _) in enumerate(matched_pairs, 1):
+		tqdm_bar = tqdm(matched_pairs, desc='Applying metadata', unit='file')
+		for pair in tqdm_bar:
 			try:
-				if i % 10 == 0 or i == total_matched:
-					logger.info(f"Progress: {i}/{total_matched} matched files processed")
+				json_path, media_file, _ = pair
 				if process_file(media_file, old_dir, args.dry_run, args.overwrite):
 					updated_count += 1
 				else:
