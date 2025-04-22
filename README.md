@@ -1,140 +1,120 @@
-# 📸 Google to Apple Photos Metadata Synchronizer
+# 📸 Universal Photo Manager
 
-> **⚠️ DISCLAIMER: Avoid using this library unless you have advanced needs!**
->
-> For most users, use the official Google Takeout transfer tool instead:
-> [https://takeout.google.com/takeout/transfer/custom/photos](https://takeout.google.com/takeout/transfer/custom/photos)
->
-> Only use this library if you have advanced cases (e.g., deleting duplicates or other special workflows).
+A comprehensive toolkit for managing, organizing, and preserving your photo and video collections across different platforms and services.
 
+## 🎯 Purpose
 
-## 🎯 Objective
+Universal Photo Manager helps you maintain control over your personal media library by:
 
-Fix incorrect photo and video metadata (especially dates, GPS coordinates, and titles) in files exported from Apple Photos by using accurate metadata from Google Takeout JSON files. This tool helps ensure your media files retain their original metadata when migrating from Google Photos to Apple Photos.
+- Finding and eliminating duplicate photos and videos
+- Preserving and synchronizing metadata (dates, locations, titles, etc.) between services
+- Fixing incorrect file types and extensions
+- Facilitating cross-platform migrations between photo services
+
+Particularly useful when transferring between major photo platforms like Google Photos and Apple Photos, but works with any photo collection.
 
 ## ✨ Features
 
-- **Metadata Synchronization**: Transfer dates, GPS coordinates, and titles from Google Takeout JSON files to media files
-- **Smart Matching**: Match files by name or image hash for accurate pairing
-- **Duplicate Detection**: Find and report duplicate files to avoid redundant imports
-- **File Extension Correction**: Automatically detect and fix incorrect file extensions (e.g., HEIC files that are actually JPEG)
-- **Detailed Logging**: Track all processed files and their metadata changes, including errors for failed updates
+- **Duplicate Detection & Removal**: Find and eliminate redundant files using advanced image matching
+- **Metadata Synchronization**: Apply accurate metadata from JSON sources (like Google Takeout) to media files
+- **Smart File Matching**: Match files by name, hash, or visual similarity
+- **File Extension Correction**: Automatically detect and fix incorrect file extensions
+- **Format Conversion**: Convert between image formats when needed
+- **Cross-Platform Migration**: Tools for smoother transitions between photo services
 - **Parallel Processing**: Optimize performance with multi-threaded operations
-- **Configurable Options**: Customize the synchronization process to fit your needs
-- **Direct Apple Photos Import**: Import photos directly into Apple Photos after fixing metadata
-- **Album Organization**: Preserve album structure from Google Takeout when importing to Apple Photos
+- **Detailed Logging**: Track all operations with comprehensive logs
+- **Apple Photos Integration**: Import directly to Apple Photos with album organization
+- **Google Photos Support**: Work with Google Takeout exports to preserve metadata
 
-Perfect for anyone migrating their photo library from Google Photos to Apple Photos who wants to preserve original metadata.
+## 🪜 Common Workflows
 
-## 🪜 Steps Overview
+### Remove Duplicates Only
 
-### Simple Workflow (Recommended)
+```bash
+# Find and report duplicates
+python main.py --find-duplicates-only
 
-1. **Export from Google Photos**  
-   Export photos and videos using **Google Takeout** into the `./old` folder.  
-   Ensure `.json` metadata files are included alongside media files.
+# Remove duplicates based on the report
+python main.py --remove-duplicates
+```
 
-2. **Create New Directory**  
-   Create an empty `./new` directory where files will be copied and processed.
+### Fix Metadata from Google Takeout
 
-3. **Run the Complete Workflow**  
-   Execute the script without any arguments to run the complete workflow:
-   ```bash
-   python3 main.py
-   ```
-   
-   This will automatically:
-   - Copy missing files from `./old` to `./new`
-   - Find and remove duplicates in `./new`
-   - Apply metadata from Google Takeout JSON files to files in `./new`
+```bash
+# Synchronize metadata from Google Takeout JSON files
+python main.py --sync-metadata --source-dir google_takeout --target-dir my_photos
+```
 
-### Advanced Workflow (Manual Steps)
+### Complete Google to Apple Migration
 
-1. **Export from Google Photos**  
-   Export photos and videos using **Google Takeout** into the `./old` folder.  
-   Ensure `.json` metadata files are included alongside media files.
+```bash
+# Run the complete migration workflow
+python main.py --google-to-apple --source-dir google_takeout --target-dir apple_import
+```
 
-2. **Backup (Optional)**  
-   Save your current library into the `./archive` folder as a precaution.
+### Universal Photo Management
 
-3. **Export from Apple Photos or Copy from Old**  
-   Either export photos from Apple Photos into `./new` folder ("Export Unmodified Originals"),  
-   or copy files from `./old` to `./new` using:
-
-   ```bash
-   python3 main.py --copy-to-new
-   ```
-
-4. **Find Duplicates**  
-   Identify duplicate files to avoid redundant processing:
-
-   ```bash
-   python3 main.py --find-duplicates-only
-   ```
-
-   Results will be saved to `duplicates.log`.
-
-5. **Remove Duplicates**  
-   Remove duplicate files based on the log:
-   ```bash
-   python3 main.py --remove-duplicates
-   ```
-
-6. **Sync Metadata**  
-   Run the synchronization script to transfer metadata from `./old` to `./new`:
-   ```bash
-   python3 main.py --skip-copy --skip-duplicates
-   ```
-6. **Re-import into Apple Photos**  
-   You can either manually import the files into Apple Photos, or use the built-in import feature:
-   ```bash
-   # Import photos after fixing metadata
-   python3 main.py --import-to-photos
-   
-   # Import photos and organize them into albums based on Google Takeout structure
-   python3 main.py --import-with-albums
-   ```
-   
-   Alternatively, you can use the standalone import script:
-   ```bash
-   # Import all photos from the old directory
-   python3 import_to_photos.py
-   
-   # Import with album organization
-   python3 import_to_photos.py --with-albums
-   
-   # Import a specific file
-   python3 import_to_photos.py --specific-file new/photo.jpg
-   ```
-   Import updated files from `./new` back into **Apple Photos**.  
-   Apple Photos will read and use the corrected metadata during import.
+```bash
+# Run comprehensive organization on your photo library
+python main.py --organize --fix-metadata --remove-duplicates --photo-dir my_photos
+```
 
 ## 🛠️ Command Line Options
 
 ```
-usage: main.py [-h] [--dry-run] [--old-dir OLD_DIR] [--new-dir NEW_DIR] [--limit LIMIT] [--verbose] [--quiet] [--no-hash-matching] [--similarity SIMILARITY] [--find-duplicates-only] [--processed-log PROCESSED_LOG] [--copy-to-new]
+usage: main.py [-h] [--dry-run] [--source-dir SOURCE_DIR] [--target-dir TARGET_DIR]
+               [--photo-dir PHOTO_DIR] [--limit LIMIT] [--verbose] [--quiet]
+               [--find-duplicates-only] [--remove-duplicates]
+               [--sync-metadata] [--google-to-apple] [--organize]
+               [--fix-metadata] [--similarity SIMILARITY]
 
-Synchronize metadata from Google Takeout to Apple Photos exports
+Universal Photo Manager - Organize, deduplicate, and synchronize your photo collection
 
 options:
   -h, --help            show this help message and exit
   --dry-run             Perform a dry run without modifying any files
-  --old-dir OLD_DIR     Directory with Google Takeout files (default: old)
-  --new-dir NEW_DIR     Directory with Apple Photos exports (default: new)
+  --source-dir SOURCE_DIR
+                        Source directory with original files (default: source)
+  --target-dir TARGET_DIR
+                        Target directory for processed files (default: target)
+  --photo-dir PHOTO_DIR
+                        Main photo directory for universal operations (default: photos)
   --limit LIMIT         Limit processing to specified number of files
   --verbose, -v         Enable verbose output
-  --quiet, -q           Suppress warning messages about missing files
-  --no-hash-matching    Disable image hash matching (faster but less accurate)
+  --quiet, -q           Suppress warning messages
+  --find-duplicates-only
+                        Only find and report duplicates
+  --remove-duplicates   Remove duplicate files based on analysis
+  --sync-metadata       Synchronize metadata from source files to target files
+  --google-to-apple     Run Google Photos to Apple Photos migration workflow
+  --organize            Organize photos by date/location/etc.
+  --fix-metadata        Fix and standardize metadata across collection
   --similarity SIMILARITY
                         Similarity threshold for image matching (0.0-1.0, default: 0.98)
-  --find-duplicates-only
-                        Only find and report duplicates without updating metadata
-  --processed-log PROCESSED_LOG
-                        Log file for processed files (default: processed_files.log)
-  --failed-updates-log FAILED_UPDATES_LOG
-                        Log file for failed metadata updates (default: failed_updates.log)
-  --copy-to-new        Copy media files from old directory to new directory before processing
+  --import-to-photos    Import processed files to Apple Photos
+  --import-with-albums  Import to Apple Photos with album organization
 ```
+
+## 📦 Installation
+
+1. Clone this repository
+
+```bash
+git clone https://github.com/yourusername/universal-photo-manager.git
+cd universal-photo-manager
+```
+
+2. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Install external dependencies:
+   - **exiftool** (required for metadata operations)
+     - macOS: `brew install exiftool`
+     - Linux: `apt-get install exiftool` or equivalent
+     - Windows: Download from [exiftool.org](https://exiftool.org)
 
 ## 📋 Requirements
 
@@ -142,71 +122,95 @@ options:
 - exiftool (external dependency)
 - Optional: Pillow and imagehash for improved image matching
 
-## 📝 Installation
+## 🔍 How It Works
 
-1. Clone this repository
-2. Install Python dependencies:
-   ```bash
-   pip3 install -r requirements.txt
-   ```
-3. Install exiftool (if not already installed):
-   - macOS: `brew install exiftool`
-   - Linux: `apt-get install exiftool` or equivalent
-   - Windows: Download from [exiftool.org](https://exiftool.org)
+### Duplicate Detection
 
-## 🔧 Recent Improvements
+The tool uses several methods to identify duplicates:
 
-- **File Extension Correction**: Automatically detects and fixes incorrect file extensions (e.g., HEIC files that are actually JPEG)
-- **Improved File Type Detection**: More robust detection of actual file types regardless of extension
-- **Smart JPG/JPEG Handling**: Intelligently handles JPG/JPEG format variations without unnecessary conversions
-- **Enhanced Error Handling**: Better handling of edge cases and error conditions with dedicated error logging
-- **Optimized Logging**: Reduced log verbosity for common operations while preserving important information
-- **Failed Updates Tracking**: Separate logging for files that fail metadata updates for easier troubleshooting
+1. **File hash comparison**: For exact binary matches
+2. **Image hash comparison**: Finds visually identical images even with different compression
+3. **Metadata analysis**: Compares dates, GPS data, and other metadata
+4. **Filename analysis**: Identifies naming patterns that suggest duplicates
+
+### Metadata Synchronization
+
+When synchronizing metadata:
+
+1. Files are matched between source and target directories
+2. JSON metadata files (like those from Google Takeout) are parsed
+3. Extracted metadata is applied to target files using exiftool
+4. A detailed log of changes is maintained
+
+### Google to Apple Migration
+
+The specialized Google to Apple workflow:
+
+1. Processes Google Takeout export with JSON metadata
+2. Fixes file extensions and formats for Apple Photos compatibility
+3. Applies correct metadata to all files
+4. Optionally imports directly to Apple Photos
+5. Preserves album structure when importing
 
 ## 📊 Usage Examples
 
-### Basic Usage
+### Basic Universal Organization
 
-The most common workflow is to run the script without any options:
+Clean up and organize your entire photo collection:
 
 ```bash
-python3 main.py
+# Organize a photo directory with all features enabled
+python main.py --photo-dir my_photos --organize --fix-metadata --remove-duplicates
 ```
 
-This will process all files in the default directories (`./old` and `./new`).
+### Google Photos to Apple Photos Migration
 
-### Copying Files from Old to New
-
-If you want to copy files from the `./old` directory to `./new` before processing:
+Complete migration workflow:
 
 ```bash
-python3 main.py --copy-to-new
+# Step 1: Prepare directories
+mkdir -p google_takeout apple_photos
+
+# Step 2: Extract Google Takeout archive to google_takeout directory
+
+# Step 3: Run migration
+python main.py --google-to-apple --source-dir google_takeout --target-dir apple_photos
+
+# Step 4: Import to Apple Photos with albums
+python main.py --target-dir apple_photos --import-with-albums
 ```
 
-### Dry Run
+### Simple Duplicate Removal
 
-To test the process without making any changes to files:
+Just find and remove duplicates:
 
 ```bash
-python3 main.py --dry-run
+# Find duplicates in a directory
+python main.py --photo-dir my_photos --find-duplicates-only
+
+# Review duplicates.log file, then remove duplicates
+python main.py --photo-dir my_photos --remove-duplicates
 ```
 
-### Limiting the Number of Files
+## 🔧 Advanced Usage
 
-To process only a specific number of files (useful for testing):
-
-```bash
-python3 main.py --limit 100
-```
-
-### Using Custom Directories
-
-If your files are in different locations:
+### Working with Multiple Sources
 
 ```bash
-python3 main.py --old-dir /path/to/google/takeout --new-dir /path/to/apple/exports
+# First process Google Takeout data
+python main.py --sync-metadata --source-dir google_takeout --target-dir main_library
+
+# Then process another source
+python main.py --sync-metadata --source-dir iphone_backup --target-dir main_library
+
+# Finally clean up the combined library
+python main.py --photo-dir main_library --organize --remove-duplicates
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! If you'd like to improve this tool, please feel free to submit a pull request or open an issue.
+Contributions are welcome! If you'd like to improve this tool, please feel free to submit a pull request or open an issue on GitHub.
+
+## 📝 License
+
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0) - see the LICENSE file for details.
