@@ -7,6 +7,11 @@ import logging
 import csv
 import re
 import concurrent.futures
+try:
+	from tqdm import tqdm
+except ImportError:
+	def tqdm(x, *args, **kwargs):
+		return x
 from typing import Optional, Dict, List, Tuple, Set
 from datetime import datetime
 from pathlib import Path
@@ -141,11 +146,8 @@ class MetadataService:
 			if file_count > 1000:
 				logger.info("Using parallel processing for indexing large collection")
 				with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-					futures = []
-					for filename, full_path in media_files:
-						futures.append(executor.submit(MetadataService._index_single_file, filename, full_path))
-
-					for future in concurrent.futures.as_completed(futures):
+					futures = [executor.submit(MetadataService._index_single_file, filename, full_path) for filename, full_path in media_files]
+					for i, future in enumerate(tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc='Indexing files (parallel)')):
 						try:
 							base_name, filename, full_path = future.result()
 							# Add to index
@@ -163,7 +165,7 @@ class MetadataService:
 							logger.error(f"Error indexing file: {str(e)}")
 			else:
 				# For smaller collections, process sequentially
-				for filename, full_path in media_files:
+				for filename, full_path in tqdm(media_files, desc='Indexing files (sequential)'):
 					base_name = get_base_filename(filename)
 					base_name_lower = base_name.lower()
 					

@@ -786,7 +786,9 @@ def main():
 				logger.info(f"Removed {removed} of {processed} duplicate files")
 		else:
 			logger.info("No duplicates found")
-	
+	else:
+		logger.info("Step 2/3: Skipping duplicate search and removal (--skip-duplicates)")
+
 	# Step 3: Apply metadata (if not skipped)
 	if not args.skip_metadata:
 		logger.info(f"Step 3/3: Applying metadata from {old_dir} to files in {new_dir}...")
