@@ -62,37 +62,53 @@ python main.py --organize --fix-metadata --remove-duplicates --photo-dir my_phot
 ## 🛠️ Command Line Options
 
 ```
-usage: main.py [-h] [--dry-run] [--source-dir SOURCE_DIR] [--target-dir TARGET_DIR]
-               [--photo-dir PHOTO_DIR] [--limit LIMIT] [--verbose] [--quiet]
-               [--find-duplicates-only] [--remove-duplicates]
-               [--sync-metadata] [--google-to-apple] [--organize]
-               [--fix-metadata] [--similarity SIMILARITY]
+usage: main.py [-h] [--dry-run] [--old-dir OLD_DIR] [--new-dir NEW_DIR]
+               [--limit LIMIT] [--verbose] [--quiet] [--no-hash-matching]
+               [--similarity SIMILARITY] [--processed-log PROCESSED_LOG]
+               [--failed-updates-log FAILED_UPDATES_LOG] [--duplicates-log DUPLICATES_LOG]
+               [--rename-suffix RENAME_SUFFIX] [--status-log STATUS_LOG]
+               [--import-to-photos] [--import-with-albums]
 
 Universal Photo Manager - Organize, deduplicate, and synchronize your photo collection
 
 options:
   -h, --help            show this help message and exit
   --dry-run             Perform a dry run without modifying any files
-  --source-dir SOURCE_DIR
-                        Source directory with original files (default: source)
-  --target-dir TARGET_DIR
-                        Target directory for processed files (default: target)
-  --photo-dir PHOTO_DIR
-                        Main photo directory for universal operations (default: photos)
+  --old-dir OLD_DIR     Directory with Google Takeout files (default: old)
+  --new-dir NEW_DIR     Directory with Apple Photos exports (default: new)
   --limit LIMIT         Limit processing to specified number of files
   --verbose, -v         Enable verbose output
   --quiet, -q           Suppress warning messages
-  --find-duplicates-only
-                        Only find and report duplicates
-  --remove-duplicates   Remove duplicate files based on analysis
-  --sync-metadata       Synchronize metadata from source files to target files
-  --google-to-apple     Run Google Photos to Apple Photos migration workflow
-  --organize            Organize photos by date/location/etc.
-  --fix-metadata        Fix and standardize metadata across collection
+  --no-hash-matching    Disable image hash matching (faster but less accurate)
   --similarity SIMILARITY
                         Similarity threshold for image matching (0.0-1.0, default: 0.98)
   --import-to-photos    Import processed files to Apple Photos
   --import-with-albums  Import to Apple Photos with album organization
+
+Advanced options:
+  --skip-copy           Skip copying files from old directory to new directory
+  --skip-duplicates     Skip finding and removing duplicates
+  --skip-metadata       Skip applying metadata
+  --find-duplicates-only
+                        Only find and report duplicates without updating metadata
+  --copy-to-new         Only copy files from old directory to new directory
+  --remove-duplicates   Only remove duplicate files in the new directory
+  --rename-files        Only rename files by removing "(1)" from filenames
+  --fix-metadata        Fix metadata for problematic file types (MPG, AVI, PNG, AAE)
+  --extensions EXTENSIONS
+                        Comma-separated list of file extensions to process (e.g., "mpg,avi,png")
+  --overwrite           Overwrite existing XMP sidecar files
+  --find-duplicates-by-name
+                        Find duplicates by checking for files with the same base name but with "(1)" suffix
+  --check-metadata      Check which files in the new directory need metadata updates from the old directory
+
+New features:
+  --convert-heic        Convert HEIC files to JPG format for better compatibility
+  --fix-extensions      Fix incorrect file extensions based on actual file content
+  --recover-filenames   Recover original filenames from JSON metadata
+  --process-zip         Process Google Takeout zip files directly without extracting first
+  --preserve-albums     Preserve album structure when importing to Apple Photos (creates folders for album groups)
+  --skip-album-folders  Skip creating folders for album groups, import all albums at top level
 ```
 
 ## 📦 Installation
@@ -198,13 +214,67 @@ python main.py --photo-dir my_photos --remove-duplicates
 
 ```bash
 # First process Google Takeout data
-python main.py --sync-metadata --source-dir google_takeout --target-dir main_library
+python main.py --old-dir google_takeout --new-dir main_library
 
 # Then process another source
-python main.py --sync-metadata --source-dir iphone_backup --target-dir main_library
+python main.py --old-dir iphone_backup --new-dir main_library
 
 # Finally clean up the combined library
-python main.py --photo-dir main_library --organize --remove-duplicates
+python main.py --old-dir main_library --new-dir main_library --remove-duplicates
+```
+
+### Using the New Features
+
+#### Processing Google Takeout Zip Files Directly
+
+You can process Google Takeout zip files directly without extracting them first:
+
+```bash
+# Process a Google Takeout zip file directly
+python main.py --old-dir takeout.zip --new-dir photos --process-zip
+```
+
+#### Converting HEIC Files to JPG
+
+Convert HEIC files to JPG format for better compatibility:
+
+```bash
+# Convert all HEIC files to JPG
+python main.py --old-dir old --new-dir new --convert-heic
+```
+
+#### Fixing File Extensions
+
+Fix incorrect file extensions based on actual file content:
+
+```bash
+# Fix incorrect file extensions
+python main.py --old-dir old --new-dir new --fix-extensions
+```
+
+#### Recovering Original Filenames
+
+Recover original filenames from JSON metadata:
+
+```bash
+# Recover original filenames
+python main.py --old-dir old --new-dir new --recover-filenames
+```
+
+#### Preserving Album Structure
+
+Preserve album structure when importing to Apple Photos:
+
+```bash
+# Import with album structure preservation
+python main.py --old-dir old --new-dir new --import-with-albums --preserve-albums
+```
+
+#### Complete Workflow with New Features
+
+```bash
+# Complete workflow with all new features
+python main.py --old-dir takeout.zip --new-dir photos --process-zip --convert-heic --fix-extensions --recover-filenames --import-with-albums --preserve-albums
 ```
 
 ## 🤝 Contributing

@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 class ExifToolService:
 	"""Service for interacting with exiftool"""
-	
+
 	@staticmethod
 	def check_exiftool() -> bool:
 		"""
 		Check if exiftool is installed
-		
+
 		Returns:
 			True if exiftool is installed, False otherwise
 		"""
@@ -29,39 +29,39 @@ class ExifToolService:
 			logger.error("exiftool is not installed. Please install it to continue.")
 			logger.info("On macOS, you can install it with: brew install exiftool")
 			return False
-	
+
 	@staticmethod
 	def fix_file_extension(file_path: str) -> str:
 		"""
 		Fixes the file extension if it doesn't match the actual file type
-		
+
 		Args:
 			file_path: Path to the file
-			
+
 		Returns:
 			Path to the file with the correct extension (may be the same as input)
 		"""
 		if not os.path.exists(file_path):
 			logger.error(f"File not found: {file_path}")
 			return file_path
-		
+
 		real_ext, mime_type = ExifToolService.detect_file_type(file_path)
 		if not real_ext:
 			logger.debug(f"Could not determine real file type for {file_path}")
 			return file_path
-		
+
 		# Get the current file extension
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
-		
+
 		# Check special case for JPG/JPEG
 		if (real_ext.lower() == 'jpg' and file_ext.lower() == 'jpeg') or (real_ext.lower() == 'jpeg' and file_ext.lower() == 'jpg'):
 			# Don't fix extension for JPG/JPEG as they are essentially the same format
 			return file_path
-		
+
 		# If extension already matches the real file type
 		if real_ext.lower() == file_ext.lower():
 			return file_path
-		
+
 		# Correction map for different file types
 		fix_map = {
 			# Photos
@@ -72,13 +72,13 @@ class ExifToolService:
 			'mp4': ['mov', 'avi', '3gp'],  # MP4 files with incorrect extensions
 			'mov': ['mp4', 'avi', '3gp'],  # MOV files with incorrect extensions
 		}
-		
+
 		# Check if we need to fix the extension
 		if real_ext in fix_map and file_ext in fix_map.get(real_ext, []):
 			# Create a new filename with the correct extension
 			base_name = os.path.splitext(file_path)[0]
 			new_path = f"{base_name}.{real_ext}"
-			
+
 			# Check if a file with this name already exists
 			if os.path.exists(new_path):
 				# Check the size of the existing file
@@ -94,23 +94,23 @@ class ExifToolService:
 					except Exception as e:
 						logger.error(f"Failed to remove empty file {new_path}: {str(e)}")
 						return file_path
-			
+
 			try:
 				# Create a copy of the file with the correct extension
 				shutil.copy2(file_path, new_path)
 				logger.info(f"Copied {file_path} to {new_path} with correct extension ({file_ext} -> {real_ext})")
-				
+
 				# Check that the copy was created successfully and has the correct size
 				if os.path.exists(new_path) and os.path.getsize(new_path) > 0:
 					# Verify that the files have the same content by comparing hashes
 					try:
 						# Import here to avoid circular imports
 						from src.utils.image_utils import compute_file_hash
-						
+
 						# Compute hashes for both files
 						orig_hash = compute_file_hash(file_path)
 						new_hash = compute_file_hash(new_path)
-						
+
 						# Only remove the original if hashes match
 						if orig_hash and new_hash and orig_hash == new_hash:
 							try:
@@ -135,7 +135,7 @@ class ExifToolService:
 			except Exception as e:
 				logger.error(f"Error copying file {file_path} to {new_path}: {str(e)}")
 				return file_path
-		
+
 		# If the file type doesn't need correction or is not supported
 		return file_path
 
@@ -143,17 +143,17 @@ class ExifToolService:
 	def detect_file_type(file_path: str) -> Tuple[str, str]:
 		"""
 		Detects the actual file type, regardless of extension
-		
+
 		Args:
 			file_path: Path to the file
-			
+
 		Returns:
 			Tuple (real_extension, mime_type)
 		"""
 		if not os.path.exists(file_path):
 			logger.error(f"File not found: {file_path}")
 			return '', ''
-		
+
 		# Extended MIME-type map
 		ext_map = {
 			'image/jpeg': 'jpg',
@@ -169,44 +169,44 @@ class ExifToolService:
 			'image/webp': 'webp',
 			'image/tiff': 'tiff'
 		}
-		
+
 		try:
 			# Method 1: Use exiftool to determine file type
 			cmd = ['exiftool', '-FileType', '-s3', file_path]
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
-			
+
 			if result.returncode == 0 and result.stdout.strip():
 				real_ext = result.stdout.strip().lower()
-				
+
 				# Get MIME type based on the real extension
 				mime_type = mimetypes.guess_type(f"file.{real_ext}")[0] or ''
-				
+
 				# Check special cases
 				if real_ext.lower() == 'jpeg':
 					real_ext = 'jpg'
-				
+
 				return real_ext, mime_type
-			
+
 			# Method 2: If exiftool failed to determine the type, use file command
 			cmd = ['file', '--mime-type', '-b', file_path]
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
-			
+
 			if result.returncode == 0 and result.stdout.strip():
 				mime_type = result.stdout.strip()
-				
+
 				# Convert MIME type to extension
 				real_ext = ext_map.get(mime_type, '')
-				
+
 				# If not found in the map, try to extract from MIME type
 				if not real_ext and '/' in mime_type:
 					potential_ext = mime_type.split('/')[-1]
 					if potential_ext in ['jpeg', 'jpg', 'png', 'gif', 'webp', 'heic', 'heif', 'mp4', 'mov', 'mpeg', 'avi']:
 						real_ext = 'jpg' if potential_ext == 'jpeg' else potential_ext
-				
+
 				return real_ext, mime_type
 		except Exception as e:
 			logger.debug(f"Error detecting file type for {file_path}: {str(e)}")
-		
+
 		# If the type could not be determined, return the extension from the filename
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
 		return file_ext, mimetypes.guess_type(file_path)[0] or ''
@@ -215,22 +215,22 @@ class ExifToolService:
 	def apply_metadata(file_path: str, metadata_args: List[str], dry_run: bool = False) -> bool:
 		"""
 		Apply metadata to a file using exiftool
-		
+
 		Args:
 			file_path: Path to the file
 			metadata_args: List of exiftool arguments
 			dry_run: If True, only print the command without executing it
-			
+
 		Returns:
 			True if successful, False otherwise
 		"""
 		if not metadata_args:
 			return False
-		
+
 		# Determine the real file type, not just the extension
 		real_ext, mime_type = ExifToolService.detect_file_type(file_path)
 		file_ext = file_path.lower().split('.')[-1] if '.' in file_path else ''
-		
+
 		# Check if the extension doesn't match the actual file type
 		if real_ext and real_ext != file_ext:
 			# Skip jpg/jpeg cases as they are essentially the same format
@@ -238,10 +238,10 @@ class ExifToolService:
 				pass  # Don't show warning or fix extension
 			else:
 				logger.info(f"File {file_path} has extension '{file_ext}' but is actually a '{real_ext}' file")
-				
+
 				# Fix file extension for all file types with incorrect extensions
 				fixed_path = ExifToolService.fix_file_extension(file_path)
-				
+
 				# If the path has changed (i.e., a copy with the correct extension was created)
 				if fixed_path != file_path and os.path.exists(fixed_path):
 					logger.info(f"Using file with correct extension: {fixed_path}")
@@ -250,10 +250,10 @@ class ExifToolService:
 					# Update the extension and file type for further processing
 					file_ext = os.path.splitext(fixed_path)[1][1:].lower()
 					real_ext = file_ext  # Now the extension matches the real type
-		
+
 		# Create a copy of arguments for modification depending on the file type
 		adjusted_args = metadata_args.copy()
-		
+
 		# Special handling for different file types based on the real type
 		if real_ext == 'jpg' or 'jpeg' in mime_type or file_ext.lower() == 'jpg':
 			# For JPEG files (including those that were renamed)
@@ -293,18 +293,18 @@ class ExifToolService:
 			# For other video files, use special flags
 			adjusted_args.append('-ignoreMinorErrors')
 			adjusted_args.append('-use MWG')
-		
+
 		try:
 			cmd = ['exiftool']
 			cmd.extend(adjusted_args)
-			
+
 			# Overwrite original file
 			cmd.extend(['-overwrite_original', file_path])
-			
+
 			if dry_run:
 				logger.info(f"[DRY RUN] Would execute: {' '.join(cmd)}")
 				return True
-			
+
 			# Use subprocess.run without check=True to handle errors ourselves
 			try:
 				result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
@@ -324,7 +324,7 @@ class ExifToolService:
 				else:
 					logger.error(f"Failed to update metadata for {file_path} after timeout")
 					return False
-			
+
 			if result.returncode == 0:
 				logger.info(f"Successfully updated metadata for {file_path}")
 				return True
@@ -332,15 +332,15 @@ class ExifToolService:
 				# If the first attempt failed, try with dates only
 				if result.returncode != 0 and not dry_run:
 					logger.warning(f"First attempt failed for {file_path}, trying with dates only")
-					
+
 					# Keep only date-related arguments
 					date_args = [arg for arg in adjusted_args if arg.startswith('-DateTime') or arg.startswith('-Create') or arg.startswith('-Modify')]
-					
+
 					if date_args:
 						cmd = ['exiftool']
 						cmd.extend(date_args)
 						cmd.extend(['-ignoreMinorErrors', '-overwrite_original', file_path])
-						
+
 						try:
 							try:
 								result2 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
@@ -358,7 +358,7 @@ class ExifToolService:
 									cmd = ['exiftool']
 									cmd.extend(date_args)
 									cmd.extend(['-FileType=JPEG', '-ignoreMinorErrors', '-overwrite_original', file_path])
-									
+
 									try:
 										try:
 											result3 = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
@@ -377,34 +377,34 @@ class ExifToolService:
 									logger.error(f"Failed to update even date metadata for {file_path}: {result2.stderr.decode()}")
 						except Exception as e2:
 							logger.error(f"Error in second attempt for {file_path}: {str(e2)}")
-				
+
 				logger.error(f"Failed to update metadata for {file_path}: {result.stderr.decode()}")
 				return False
 		except Exception as e:
 			logger.error(f"Error applying metadata to {file_path}: {str(e)}")
 			return False
-	
+
 	@staticmethod
 	def apply_specialized_metadata_for_problematic_files(file_path: str) -> bool:
 		"""
 		Apply specialized metadata handling for problematic file types (MPG, AVI, etc.)
 		This is a last-resort method for files that failed normal metadata application
-		
+
 		Args:
 			file_path: Path to the file
-			
+
 		Returns:
 			True if successful, False otherwise
 		"""
 		try:
 			# Get file extension
 			file_ext = os.path.splitext(file_path)[1].lower().lstrip('.')
-			
+
 			# Determine file creation time from filesystem
 			try:
 				creation_time = os.path.getctime(file_path)
 				modification_time = os.path.getmtime(file_path)
-				
+
 				# Format dates for exiftool
 				from datetime import datetime
 				date_format = "%Y:%m:%d %H:%M:%S"
@@ -413,7 +413,7 @@ class ExifToolService:
 			except Exception as e:
 				logger.warning(f"Could not get file times for {file_path}: {str(e)}")
 				return False
-			
+
 			# Create basic command with only date metadata
 			cmd = [
 				'exiftool',
@@ -425,7 +425,7 @@ class ExifToolService:
 				'-overwrite_original',
 				file_path
 			]
-			
+
 			# Special handling for specific file types
 			if file_ext in ['mpg', 'mpeg']:
 				# For MPG files, use a more direct approach
@@ -437,7 +437,7 @@ class ExifToolService:
 			elif file_ext in ['png']:
 				# For PNG files
 				cmd.insert(1, '-F')  # Force writing
-			
+
 			# Execute command with timeout
 			try:
 				result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
@@ -450,35 +450,102 @@ class ExifToolService:
 			except subprocess.TimeoutExpired:
 				logger.error(f"Specialized metadata command timed out for {file_path}")
 				return False
-			
+
 		except Exception as e:
 			logger.error(f"Error in specialized metadata handling for {file_path}: {str(e)}")
 			return False
-		
+
+	@staticmethod
+	def copy_metadata(source_path: str, target_path: str) -> bool:
+		"""
+		Copy metadata from source file to target file using exiftool
+
+		Args:
+			source_path: Path to the source file
+			target_path: Path to the target file
+
+		Returns:
+			True if successful, False otherwise
+		"""
+		if not os.path.exists(source_path):
+			logger.error(f"Source file not found: {source_path}")
+			return False
+
+		if not os.path.exists(target_path):
+			logger.error(f"Target file not found: {target_path}")
+			return False
+
+		try:
+			# Use exiftool to copy all metadata from source to target
+			cmd = [
+				'exiftool', 
+				'-TagsFromFile', source_path,
+				'-all:all',
+				'-overwrite_original',
+				target_path
+			]
+
+			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+
+			if result.returncode == 0:
+				logger.info(f"Successfully copied metadata from {source_path} to {target_path}")
+				return True
+			else:
+				logger.warning(f"Failed to copy all metadata, trying with basic metadata only")
+
+				# Try with just the essential metadata
+				cmd = [
+					'exiftool',
+					'-TagsFromFile', source_path,
+					'-DateTimeOriginal',
+					'-CreateDate',
+					'-ModifyDate',
+					'-Title',
+					'-Description',
+					'-GPSLatitude',
+					'-GPSLongitude',
+					'-GPSLatitudeRef',
+					'-GPSLongitudeRef',
+					'-overwrite_original',
+					target_path
+				]
+
+				result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+
+				if result.returncode == 0:
+					logger.info(f"Successfully copied basic metadata from {source_path} to {target_path}")
+					return True
+				else:
+					logger.error(f"Failed to copy metadata from {source_path} to {target_path}: {result.stderr}")
+					return False
+		except Exception as e:
+			logger.error(f"Error copying metadata from {source_path} to {target_path}: {str(e)}")
+			return False
+
 	@staticmethod
 	def get_metadata(file_path: str) -> Optional[dict]:
 		"""
 		Get metadata from a file using exiftool
-		
+
 		Args:
 			file_path: Path to the file
-			
+
 		Returns:
 			Dictionary with metadata or None if failed
 		"""
 		if not os.path.exists(file_path):
 			logger.error(f"File not found: {file_path}")
 			return None
-		
+
 		try:
 			# Use -j for JSON output and -G for grouping tags by their family
 			cmd = ['exiftool', '-j', '-G', file_path]
 			result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-			
+
 			if result.returncode != 0:
 				logger.error(f"Failed to get metadata for {file_path}: {result.stderr}")
 				return None
-			
+
 			# Parse JSON output
 			import json
 			try:

@@ -2,5 +2,9 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/Google-Photos-Fixer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/GooglePhotosMatcher" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/google-photos-metadata-fix" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/google-takeout-photo-fixer" vcs="Git" />
   </component>
 </project>

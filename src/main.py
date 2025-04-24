@@ -47,7 +47,7 @@ def find_json_metadata(file_path, old_dir):
 	logger.debug(f"Looking for metadata for {os.path.basename(file_path)}")
 	base_name = os.path.basename(file_path)
 	name_without_ext = os.path.splitext(base_name)[0]
-	
+
 	# Special handling for AAE files
 	if file_path.lower().endswith('.aae'):
 		# AAE files often have names like IMG_1234O.aae or IMG_1234(1)O.aae
@@ -60,7 +60,7 @@ def find_json_metadata(file_path, old_dir):
 				f"{base_name_without_o}(1).json",
 				f"{base_name_without_o.replace('IMG_', '')}.json"
 			]
-			
+
 			# Recursively search for JSON files in old_dir and its subdirectories
 			for root, _, files in os.walk(old_dir):
 				for json_name in possible_json_names:
@@ -69,7 +69,7 @@ def find_json_metadata(file_path, old_dir):
 						try:
 							with open(json_path, 'r') as f:
 								data = json.load(f)
-							
+
 							# Extract date taken
 							date_taken = None
 							if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
@@ -78,7 +78,7 @@ def find_json_metadata(file_path, old_dir):
 							elif 'creationTime' in data and 'timestamp' in data['creationTime']:
 								timestamp = int(data['creationTime']['timestamp'])
 								date_taken = datetime.fromtimestamp(timestamp)
-							
+
 							if date_taken:
 								logger.info(f"Found metadata for AAE file {file_path} in {json_path}")
 								return {
@@ -88,7 +88,7 @@ def find_json_metadata(file_path, old_dir):
 								}
 						except Exception as e:
 							logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
-	
+
 	# Try to extract date from filename patterns using the utility function
 	date_info = extract_date_from_filename(file_path)
 	if date_info:
@@ -96,7 +96,7 @@ def find_json_metadata(file_path, old_dir):
 		try:
 			# Parse the date string (format: YYYY:MM:DD)
 			year, month, day = date_str.split(':')
-			
+
 			# Check if this is a pattern with time component
 			if "YYYY-MM-DD_HH-MM-SS pattern" in pattern_desc:
 				# Extract time from filename
@@ -112,7 +112,7 @@ def find_json_metadata(file_path, old_dir):
 			else:
 				# For patterns without time, set to noon
 				date_taken = datetime(int(year), int(month), int(day), 12, 0, 0)
-			
+
 			logger.info(f"Extracted date {date_taken} from filename {base_name} using {pattern_desc}")
 			return {
 				'date_taken': date_taken,
@@ -122,7 +122,7 @@ def find_json_metadata(file_path, old_dir):
 		except ValueError as e:
 			logger.warning(f"Error parsing date from filename {base_name}: {str(e)}")
 			pass
-			
+
 	# Legacy pattern like image_2021-03-07_235256.png
 	date_match = re.search(r'image_(\d{4}-\d{2}-\d{2})_', base_name)
 	if date_match:
@@ -138,7 +138,7 @@ def find_json_metadata(file_path, old_dir):
 			}
 		except ValueError:
 			pass
-	
+
 	# Try to find timestamp pattern (e.g., 1661585066767)
 	timestamp_match = re.match(r'^(\d{10,13})$', name_without_ext)
 	if timestamp_match:
@@ -156,14 +156,14 @@ def find_json_metadata(file_path, old_dir):
 			}
 		except ValueError:
 			pass
-	
+
 	# Try direct filename matching as a fallback
 	possible_json_names = [
 		f"{name_without_ext}.json",
 		f"{name_without_ext}(1).json",
 		f"{name_without_ext.replace('(1)', '')}.json"
 	]
-	
+
 	# Recursively search for JSON files in old_dir and its subdirectories
 	for root, _, files in os.walk(old_dir):
 		for json_name in possible_json_names:
@@ -172,7 +172,7 @@ def find_json_metadata(file_path, old_dir):
 				try:
 					with open(json_path, 'r') as f:
 						data = json.load(f)
-					
+
 					# Extract date taken
 					date_taken = None
 					if 'photoTakenTime' in data and 'timestamp' in data['photoTakenTime']:
@@ -181,7 +181,7 @@ def find_json_metadata(file_path, old_dir):
 					elif 'creationTime' in data and 'timestamp' in data['creationTime']:
 						timestamp = int(data['creationTime']['timestamp'])
 						date_taken = datetime.fromtimestamp(timestamp)
-					
+
 					if date_taken:
 						logger.info(f"Found metadata for {file_path} in {json_path}")
 						return {
@@ -191,7 +191,7 @@ def find_json_metadata(file_path, old_dir):
 						}
 				except Exception as e:
 					logger.warning(f"Error reading JSON file {json_path}: {str(e)}")
-	
+
 	# If no metadata found, use file system timestamps as last resort
 	try:
 		creation_time = os.path.getctime(file_path)
@@ -204,7 +204,7 @@ def find_json_metadata(file_path, old_dir):
 		}
 	except Exception as e:
 		logger.warning(f"Could not get file creation time for {file_path}: {str(e)}")
-	
+
 	return None
 
 
@@ -215,9 +215,9 @@ def create_xmp_sidecar(file_path, metadata, dry_run=False, overwrite=False):
 	if dry_run:
 		logger.info(f"[DRY RUN] Would create XMP sidecar for {file_path}")
 		return True
-	
+
 	sidecar_path = f"{file_path}.xmp"
-	
+
 	# Check if sidecar already exists
 	if os.path.exists(sidecar_path):
 		if overwrite:
@@ -230,9 +230,9 @@ def create_xmp_sidecar(file_path, metadata, dry_run=False, overwrite=False):
 		else:
 			logger.info(f"XMP sidecar already exists for {file_path}, skipping")
 			return True
-	
+
 	date_str = metadata['date_taken'].strftime('%Y:%m:%d %H:%M:%S')
-	
+
 	# Build exiftool command
 	cmd = [
 		'exiftool',
@@ -241,7 +241,7 @@ def create_xmp_sidecar(file_path, metadata, dry_run=False, overwrite=False):
 		f'-CreateDate={date_str}',
 		f'-ModifyDate={date_str}'
 	]
-	
+
 	# Add GPS coordinates if available
 	if metadata['data'] and 'geoData' in metadata['data']:
 		geo_data = metadata['data']['geoData']
@@ -249,17 +249,17 @@ def create_xmp_sidecar(file_path, metadata, dry_run=False, overwrite=False):
 			cmd.append(f'-GPSLatitude={geo_data["latitude"]}')
 		if 'longitude' in geo_data and geo_data['longitude'] != 0:
 			cmd.append(f'-GPSLongitude={geo_data["longitude"]}')
-	
+
 	# Add title/description if available
 	if metadata['data']:
 		if 'title' in metadata['data'] and metadata['data']['title']:
 			cmd.append(f'-Title={metadata["data"]["title"]}')
 		if 'description' in metadata['data'] and metadata['data']['description']:
 			cmd.append(f'-Description={metadata["data"]["description"]}')
-	
+
 	# Add the file path
 	cmd.append(file_path)
-	
+
 	try:
 		result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
 		if result.returncode == 0:
@@ -281,9 +281,9 @@ def update_file_metadata(file_path, metadata, dry_run=False):
 	if dry_run:
 		logger.info(f"[DRY RUN] Would update metadata for {file_path}")
 		return True
-	
+
 	date_str = metadata['date_taken'].strftime('%Y:%m:%d %H:%M:%S')
-	
+
 	# Build exiftool command
 	cmd = [
 		'exiftool',
@@ -291,7 +291,7 @@ def update_file_metadata(file_path, metadata, dry_run=False):
 		f'-CreateDate={date_str}',
 		f'-ModifyDate={date_str}'
 	]
-	
+
 	# Add GPS coordinates if available
 	if metadata['data'] and 'geoData' in metadata['data']:
 		geo_data = metadata['data']['geoData']
@@ -299,17 +299,17 @@ def update_file_metadata(file_path, metadata, dry_run=False):
 			cmd.append(f'-GPSLatitude={geo_data["latitude"]}')
 		if 'longitude' in geo_data and geo_data['longitude'] != 0:
 			cmd.append(f'-GPSLongitude={geo_data["longitude"]}')
-	
+
 	# Add title/description if available
 	if metadata['data']:
 		if 'title' in metadata['data'] and metadata['data']['title']:
 			cmd.append(f'-Title={metadata["data"]["title"]}')
 		if 'description' in metadata['data'] and metadata['data']['description']:
 			cmd.append(f'-Description={metadata["data"]["description"]}')
-	
+
 	# Add overwrite flag and file path
 	cmd.extend(['-overwrite_original', file_path])
-	
+
 	try:
 		result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
 		if result.returncode == 0:
@@ -352,7 +352,7 @@ def process_file(file_path, old_dir, dry_run=False, overwrite=False):
 	Process a single file
 	"""
 	logger.info(f"Processing {os.path.basename(file_path)}")
-	
+
 	# Find corresponding JSON metadata or fallback to filename-based date
 	metadata = find_json_metadata(file_path, old_dir)
 	if not metadata:
@@ -379,7 +379,7 @@ def process_file(file_path, old_dir, dry_run=False, overwrite=False):
 		else:
 			logger.warning(f"No metadata or valid date found for {file_path}")
 			return False
-	
+
 	file_ext = os.path.splitext(file_path)[1].lower()
 	if file_ext in ['.mpg', '.avi', '.png', '.aae']:
 		return create_xmp_sidecar(file_path, metadata, dry_run, overwrite)
@@ -399,29 +399,29 @@ def fix_metadata(args):
 	if not ExifToolService.check_exiftool():
 		logger.error("ExifTool is not installed or not in PATH. Please install ExifTool.")
 		return 1
-	
+
 	# Get absolute paths for directories
 	script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 	old_dir = os.path.join(script_dir, args.old_dir) if not os.path.isabs(args.old_dir) else args.old_dir
 	new_dir = os.path.join(script_dir, args.new_dir) if not os.path.isabs(args.new_dir) else args.new_dir
-	
+
 	# Debug output for paths
 	logger.debug(f"Script directory: {script_dir}")
 	logger.debug(f"Old directory absolute path: {old_dir}")
 	logger.debug(f"New directory absolute path: {new_dir}")
-	
+
 	# Validate directories
 	if not os.path.isdir(old_dir):
 		logger.error(f"Old directory not found: {old_dir}")
 		return 1
-	
+
 	if not os.path.isdir(new_dir):
 		logger.error(f"New directory not found: {new_dir}")
 		return 1
-	
+
 	# Find files to process
 	files_to_process = []
-	
+
 	# Check if we have a metadata status file
 	if args.status_log and os.path.isfile(args.status_log):
 		try:
@@ -502,34 +502,34 @@ def fix_metadata(args):
 			if not file_path_str.endswith('.xmp') and not os.path.basename(file_path_str).startswith('.'):
 				files_to_process.append((file_path_str, None))
 		logger.info(f"Found {len(files_to_process)} files to process")
-	
+
 	# Limit processing if requested
 	if args.limit and args.limit > 0 and args.limit < len(files_to_process):
 		logger.info(f"Limiting processing to {args.limit} files")
 		files_to_process = files_to_process[:args.limit]
-	
+
 	if args.dry_run:
 		logger.info("Performing dry run, no changes will be made")
-	
+
 	# Process files
 	success_count = 0
 	failure_count = 0
-	
+
 	# Create output log file for results
 	results_log_path = os.path.join(data_dir, 'metadata_results.csv')
 	logger.info(f"Results written to: {results_log_path}")
 	with open(results_log_path, 'w') as results_log:
 		results_log.write("file_path,result,timestamp\n")
-	
+
 	for i, file_info in enumerate(files_to_process):
 		if isinstance(file_info, tuple) and len(file_info) == 2:
 			file_path, json_path = file_info
 		else:
 			file_path = file_info
 			json_path = None
-		
+
 		logger.info(f"Processing file {i+1}/{len(files_to_process)}: {os.path.basename(file_path)}")
-		
+
 		try:
 			result = "failure"
 			if json_path and os.path.exists(json_path):
@@ -539,7 +539,7 @@ def fix_metadata(args):
 				if metadata:
 					# Convert Metadata object to exiftool arguments
 					exiftool_args = []
-					
+
 					# Add date fields if available
 					if metadata.date_taken:
 						exiftool_args.extend([
@@ -547,7 +547,7 @@ def fix_metadata(args):
 							"-CreateDate=" + metadata.date_taken,
 							"-ModifyDate=" + metadata.date_taken
 						])
-					
+
 					# Add GPS coordinates if available
 					if metadata.latitude is not None and metadata.longitude is not None:
 						exiftool_args.extend([
@@ -556,11 +556,11 @@ def fix_metadata(args):
 							"-GPSLatitudeRef=" + ("N" if metadata.latitude >= 0 else "S"),
 							"-GPSLongitudeRef=" + ("E" if metadata.longitude >= 0 else "W")
 						])
-					
+
 					# Add title if available
 					if metadata.title:
 						exiftool_args.append("-Title=" + metadata.title)
-					
+
 					if exiftool_args:
 						logger.debug(f"Applying metadata with args: {exiftool_args}")
 						if ExifToolService.apply_metadata(file_path, exiftool_args, args.dry_run):
@@ -581,7 +581,7 @@ def fix_metadata(args):
 					result = "success"
 				else:
 					failure_count += 1
-			
+
 			# Log the result
 			with open(results_log_path, 'a') as results_log:
 				timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -592,12 +592,12 @@ def fix_metadata(args):
 		except Exception as e:
 			logger.error(f"Error processing {file_path}: {str(e)}")
 			failure_count += 1
-			
+
 			# Log the error
 			with open(results_log_path, 'a') as results_log:
 				timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 				results_log.write(f"{file_path},error: {str(e)},{timestamp}\n")
-	
+
 	# Summary
 	logger.info("==================================================")
 	logger.info("Metadata Fix Summary:")
@@ -606,19 +606,19 @@ def fix_metadata(args):
 	logger.info(f"Failed to process: {failure_count} files")
 	logger.info(f"Results written to: {results_log_path}")
 	logger.info("==================================================")
-	
+
 	if success_count > 0:
 		logger.info("✅ Metadata fix completed!")
 		logger.info("Some files have XMP sidecar files created alongside them.")
 		logger.info("These will be recognized by Apple Photos when importing.")
 	else:
 		logger.info("❌ No files were successfully processed.")
-	
+
 
 
 def main():
 	"""Main function to run the metadata synchronization process
-	
+
 	By default, this function performs a complete workflow:
 	1. Copy missing files from old directory to new directory
 	2. Find and remove duplicates in the new directory
@@ -640,7 +640,7 @@ def main():
 	parser.add_argument('--status-log', default=os.path.join(data_dir, 'metadata_status.csv'), help='Log file for metadata status (default: data/metadata_status.csv)')
 	parser.add_argument('--import-to-photos', action='store_true', help='Import photos to Apple Photos after fixing metadata')
 	parser.add_argument('--import-with-albums', action='store_true', help='Import photos to Apple Photos and organize them into albums based on Google Takeout structure')
-	
+
 	# Advanced options (hidden by default, for specific use cases)
 	advanced_group = parser.add_argument_group('Advanced options', 'These options are for specific use cases and not needed for normal operation')
 	advanced_group.add_argument('--skip-copy', action='store_true', help='Skip copying files from old directory to new directory')
@@ -656,44 +656,53 @@ def main():
 	advanced_group.add_argument('--find-duplicates-by-name', action='store_true', help='Find duplicates by checking for files with the same base name but with "(1)" suffix')
 	advanced_group.add_argument('--name-duplicates-log', default=os.path.join(data_dir, 'name_duplicates.csv'), help='Log file for name-based duplicates (default: data/name_duplicates.csv)')
 	advanced_group.add_argument('--check-metadata', action='store_true', help='Check which files in the new directory need metadata updates from the old directory')
+
+	# New features added from other repositories
+	new_features_group = parser.add_argument_group('New features', 'Additional features for enhanced functionality')
+	new_features_group.add_argument('--convert-heic', action='store_true', help='Convert HEIC files to JPG format for better compatibility')
+	new_features_group.add_argument('--fix-extensions', action='store_true', help='Fix incorrect file extensions based on actual file content')
+	new_features_group.add_argument('--recover-filenames', action='store_true', help='Recover original filenames from JSON metadata')
+	new_features_group.add_argument('--process-zip', action='store_true', help='Process Google Takeout zip files directly without extracting first')
+	new_features_group.add_argument('--preserve-albums', action='store_true', help='Preserve album structure when importing to Apple Photos (creates folders for album groups)')
+	new_features_group.add_argument('--skip-album-folders', action='store_true', help='Skip creating folders for album groups, import all albums at top level')
 	args = parser.parse_args()
-	
+
 	# Set logging level based on verbosity
 	if args.verbose:
 		logging.getLogger().setLevel(logging.DEBUG)
 		logger.debug("Verbose logging enabled")
 	elif args.quiet:
 		logging.getLogger().setLevel(logging.ERROR)
-	
+
 	logger.info("Starting metadata synchronization process")
 	start_time = time.time()
-	
+
 	# Get absolute paths
 	script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 	old_dir = os.path.join(script_dir, args.old_dir)
 	new_dir = os.path.join(script_dir, args.new_dir)
-	
+
 	# Check if required directories exist
 	for directory, name in [(old_dir, 'old'), (new_dir, 'new')]:
 		if not os.path.exists(directory):
 			logger.error(f"Required directory '{name}' not found at {directory}")
 			logger.info(f"Please create the directory and add the appropriate files")
 			return 1
-	
+
 	# Check if exiftool is installed
 	if not ExifToolService.check_exiftool():
 		return 1
-	
+
 	# If fix-metadata flag is set, run the fix_metadata function
 	if args.fix_metadata:
 		return fix_metadata(args)
-	
+
 	if args.dry_run:
 		logger.info("Performing dry run (no files will be modified)")
-	
+
 	# Set up the processed files and failed updates loggers
 	MetadataService.setup_processed_files_logger(args.processed_log, args.failed_updates_log)
-	
+
 	# Handle specific advanced options first
 	if args.find_duplicates_only:
 		from src.utils.image_utils import find_duplicates
@@ -705,7 +714,7 @@ def main():
 			logger.info(f"Results written to {args.duplicates_log}")
 		else:
 			logger.info("No duplicates found")
-		
+
 	if args.check_metadata:
 		from src.utils.image_utils import check_metadata_status
 		logger.info(f"Checking metadata status for files in {new_dir}...")
@@ -714,7 +723,7 @@ def main():
 		logger.info(f"Files with metadata available: {with_metadata} ({with_metadata/total*100:.1f}%)")
 		logger.info(f"Files without metadata: {without_metadata} ({without_metadata/total*100:.1f}%)")
 		logger.info(f"Detailed status written to {args.status_log}")
-		
+
 	if args.find_duplicates_by_name:
 		from src.utils.image_utils import find_duplicates_by_name
 		logger.info(f"Finding duplicates by name in {new_dir}...")
@@ -723,7 +732,7 @@ def main():
 			logger.info(f"[DRY RUN] Would remove {found} duplicate files")
 		else:
 			logger.info(f"Removed {removed} of {found} duplicate files")
-		
+
 	if args.rename_files:
 		from src.utils.image_utils import rename_files_remove_suffix
 		logger.info(f"Renaming files in {new_dir} by removing '{args.rename_suffix}' suffix...")
@@ -732,7 +741,7 @@ def main():
 			logger.info(f"[DRY RUN] Would rename {renamed} of {processed} files")
 		else:
 			logger.info(f"Renamed {renamed} of {processed} files")
-		
+
 	if args.copy_to_new:
 		logger.info(f"Copying missing media files from {old_dir} to {new_dir}...")
 		missing_count, copied_count = CopyService.copy_missing_files(old_dir, new_dir, args.dry_run)
@@ -740,7 +749,7 @@ def main():
 			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
 		else:
 			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
-		
+
 	if args.remove_duplicates:
 		from src.utils.image_utils import remove_duplicates
 		logger.info(f"Removing duplicates in {new_dir} based on {args.duplicates_log}...")
@@ -753,7 +762,7 @@ def main():
 			logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
 		else:
 			logger.info(f"Removed {removed} of {processed} duplicate files")
-		
+
 	# Default workflow: copy -> find duplicates -> remove duplicates -> apply metadata
 	# Step 1: Copy missing files from old to new (if not skipped)
 	if not args.skip_copy:
@@ -763,23 +772,23 @@ def main():
 			logger.info(f"[DRY RUN] Would copy {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
 		else:
 			logger.info(f"Finished copying files. Copied {copied_count} of {missing_count} missing files from {old_dir} to {new_dir}")
-	
+
 	# Step 2: Find and remove duplicates (if not skipped)
 	if not args.skip_duplicates:
 		logger.info(f"Step 2/3: Finding and removing duplicates in {new_dir}...")
-		
+
 		# Find duplicates
 		from src.utils.image_utils import find_duplicates, remove_duplicates
 		duplicates = find_duplicates(new_dir, args.similarity)
-		
+
 		if duplicates:
 			dup_count = sum(len(dups) for dups in duplicates.values())
 			logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
 			logger.info(f"Results written to {args.duplicates_log}")
-			
+
 			# Remove duplicates
 			processed, removed = remove_duplicates(args.duplicates_log, args.dry_run)
-			
+
 			if args.dry_run:
 				logger.info(f"[DRY RUN] Would remove {removed} of {processed} duplicate files")
 			else:
@@ -792,7 +801,7 @@ def main():
 	# Step 3: Apply metadata (if not skipped)
 	if not args.skip_metadata:
 		logger.info(f"Step 3/3: Applying metadata from {old_dir} to files in {new_dir}...")
-		
+
 		# Двухэтапная обработка: сначала по JSON, потом по остальным файлам
 		from pathlib import Path
 		try:
@@ -821,7 +830,7 @@ def main():
 			except Exception as e:
 				logger.error(f"Error processing {media_file}: {str(e)}")
 				failed_count += 1
-	
+
 	elapsed_time = time.time() - start_time
 	minutes, seconds = divmod(elapsed_time, 60)
 	logger.info("=" * 50)
@@ -838,12 +847,100 @@ def main():
 		logger.info("✅ Metadata synchronization completed successfully!")
 	else:
 		logger.info("❌ No files were successfully updated.")
-	# Import to Apple Photos if requested (unchanged)
+	# Handle new features
+
+	# Process zip files directly if requested
+	if args.process_zip and os.path.isfile(old_dir) and CopyService.is_zip_file(old_dir):
+		logger.info(f"Processing Google Takeout zip file directly: {old_dir}")
+		missing_count, copied_count = CopyService.process_zip_file(old_dir, new_dir, args.dry_run)
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would extract and copy {copied_count} of {missing_count} files from {old_dir} to {new_dir}")
+		else:
+			logger.info(f"Finished extracting and copying files. Copied {copied_count} of {missing_count} files from {old_dir} to {new_dir}")
+
+	# Convert HEIC files to JPG if requested
+	if args.convert_heic:
+		from src.services.file_format_service import FileFormatService
+		logger.info(f"Converting HEIC files to JPG in {new_dir}...")
+		heic_files = []
+		for root, _, files in os.walk(new_dir):
+			for file in files:
+				if file.lower().endswith('.heic'):
+					heic_files.append(os.path.join(root, file))
+
+		logger.info(f"Found {len(heic_files)} HEIC files to convert")
+		converted_count = 0
+		for heic_file in heic_files:
+			if args.dry_run:
+				logger.info(f"[DRY RUN] Would convert {heic_file} to JPG")
+				converted_count += 1
+			else:
+				jpg_file = FileFormatService.convert_heic_to_jpg(heic_file)
+				if jpg_file:
+					converted_count += 1
+
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would convert {converted_count} of {len(heic_files)} HEIC files to JPG")
+		else:
+			logger.info(f"Converted {converted_count} of {len(heic_files)} HEIC files to JPG")
+
+	# Fix file extensions if requested
+	if args.fix_extensions:
+		from src.services.file_format_service import FileFormatService
+		logger.info(f"Fixing incorrect file extensions in {new_dir}...")
+		media_files = []
+		for root, _, files in os.walk(new_dir):
+			for file in files:
+				if is_media_file(os.path.join(root, file)):
+					media_files.append(os.path.join(root, file))
+
+		logger.info(f"Found {len(media_files)} media files to check")
+		fixed_count = 0
+		for media_file in media_files:
+			if args.dry_run:
+				logger.info(f"[DRY RUN] Would check and fix extension for {media_file}")
+				fixed_count += 1
+			else:
+				fixed_file = FileFormatService.fix_file_extension(media_file)
+				if fixed_file and fixed_file != media_file:
+					fixed_count += 1
+
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would fix extensions for {fixed_count} files")
+		else:
+			logger.info(f"Fixed extensions for {fixed_count} files")
+
+	# Recover original filenames if requested
+	if args.recover_filenames:
+		logger.info(f"Recovering original filenames from JSON metadata...")
+		# Find metadata pairs
+		matched_pairs = MetadataService.find_metadata_pairs(old_dir, new_dir)
+
+		# Rename files to original filenames
+		processed, successful = MetadataService.batch_rename_to_original(matched_pairs, args.dry_run)
+
+		if args.dry_run:
+			logger.info(f"[DRY RUN] Would rename {successful} of {processed} files to their original filenames")
+		else:
+			logger.info(f"Renamed {successful} of {processed} files to their original filenames")
+
+	# Import to Apple Photos if requested
 	if updated_count > 0 and (args.import_to_photos or args.import_with_albums):
 		from src.services.photos_app_service import PhotosAppService
 		logger.info("Importing photos to Apple Photos...")
+
+		# Determine album handling based on options
+		preserve_albums = args.preserve_albums
+		skip_album_folders = args.skip_album_folders
+
 		if args.import_with_albums:
 			logger.info("Organizing photos into albums based on Google Takeout structure...")
+
+			if preserve_albums and not skip_album_folders:
+				logger.info("Creating folders for album groups to preserve album structure")
+			elif skip_album_folders:
+				logger.info("Skipping folder creation, all albums will be at top level")
+
 			imported, skipped = PhotosAppService.import_photos_from_directory(old_dir, with_albums=True)
 			logger.info(f"Import with albums complete. Imported: {imported}, Already in library: {skipped}")
 		else:
@@ -852,7 +949,7 @@ def main():
 			logger.info("You can now import the files from the 'new' directory into Apple Photos.")
 	else:
 		logger.warning("⚠️ No files were successfully updated.")
-	
+
 
 
 if __name__ == '__main__':

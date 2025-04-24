@@ -94,16 +94,16 @@ class MetadataService:
 	_indexed_files = {}
 	_indexed_directories = set()
 	_processed_files_logger = None
-	
+
 	@staticmethod
 	def _index_single_file(filename: str, full_path: str) -> Tuple[str, str, str]:
 		"""
 		Helper method for parallel file indexing
-		
+
 		Args:
 			filename: The filename to index
 			full_path: The full path to the file
-			
+
 		Returns:
 			Tuple of (base_name, filename, full_path)
 		"""
@@ -168,7 +168,7 @@ class MetadataService:
 				for filename, full_path in tqdm(media_files, desc='Indexing files (sequential)'):
 					base_name = get_base_filename(filename)
 					base_name_lower = base_name.lower()
-					
+
 					# Store with lowercase base name as key
 					if base_name_lower not in indexed_files:
 						indexed_files[base_name_lower] = []
@@ -189,11 +189,11 @@ class MetadataService:
 						indexed_files[clean_name].append(full_path)
 
 			logger.info(f"Indexed {file_count} files in {directory}")
-			
+
 			# Store in class variable for reuse
 			MetadataService._indexed_files = indexed_files
 			MetadataService._indexed_directories.add(directory)
-			
+
 			return indexed_files
 		except Exception as e:
 			logger.error(f"Error indexing files in {directory}: {str(e)}")
@@ -577,33 +577,33 @@ class MetadataService:
 			# Precompute hashes for all files in the new directory if using hash matching
 			if use_hash_matching:
 				logger.info("Precomputing hashes for files in the new directory...")
-				
+
 				# Load existing hashes from cache file
 				hash_cache = load_image_hashes('data/image_hashes.csv')
 				logger.info(f"Loaded {len(hash_cache)} hashes from cache")
-				
+
 				# Identify files that need hash computation
 				files_to_hash = []
 				for file_path in new_files_list:
 					if file_path not in hash_cache:
 						files_to_hash.append(file_path)
-				
+
 				if files_to_hash:
 					logger.info(f"Computing hashes for {len(files_to_hash)} new files...")
-					
+
 					# Compute hashes in parallel batches to avoid memory issues
 					batch_size = 500
 					new_hashes = {}
-					
+
 					for i in range(0, len(files_to_hash), batch_size):
 						batch = files_to_hash[i:i+batch_size]
-						
+
 						# Process batch in parallel
 						with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
 							hash_futures = {}
 							for file_path in batch:
 								hash_futures[executor.submit(compute_hash_for_file, file_path)] = file_path
-							
+
 							for future in concurrent.futures.as_completed(hash_futures):
 								file_path = hash_futures[future]
 								try:
@@ -613,12 +613,12 @@ class MetadataService:
 										hash_cache[file_path] = file_hash
 								except Exception as e:
 									logger.debug(f"Error computing hash for {file_path}: {str(e)}")
-						
+
 						if (i + batch_size) % 2000 == 0 or (i + batch_size) >= len(files_to_hash):
 							logger.info(f"Computed hashes for {min(i + batch_size, len(files_to_hash))} of {len(files_to_hash)} files")
 							# Save hashes periodically to avoid losing progress
 							save_image_hashes(hash_cache, 'data/image_hashes.csv')
-					
+
 					logger.info(f"Computed {len(new_hashes)} new hashes")
 					# Save all hashes to cache file
 					save_image_hashes(hash_cache, 'data/image_hashes.csv')
@@ -636,7 +636,7 @@ class MetadataService:
 			if duplicates:
 				dup_count = sum(len(dups) for dups in duplicates.values())
 				logger.info(f"Found {dup_count} duplicate files in {len(duplicates)} groups")
-				
+
 				# Write duplicates to a CSV file
 				try:
 					with open(duplicates_log, 'w', newline='') as f:
@@ -646,7 +646,7 @@ class MetadataService:
 							for dup in dups:
 								writer.writerow([original, dup])
 					logger.info(f"Wrote duplicates to {duplicates_log}")
-					
+
 					# Remove duplicate files only if not skipping duplicates
 					if not skip_duplicates:
 						removed_count = remove_duplicates(duplicates, dry_run=False)
@@ -795,7 +795,155 @@ class MetadataService:
 		return processed, successful
 
 	@staticmethod
-	def sync_metadata(old_dir: str, new_dir: str, dry_run: bool = False) -> Tuple[int, int, int]:
+	def recover_original_filename(json_path: str) -> Optional[str]:
+		"""
+		Recover the original filename from a Google Takeout JSON metadata file
+
+		Args:
+			json_path: Path to the JSON metadata file
+
+		Returns:
+			Original filename or None if not found
+		"""
+		try:
+			with open(json_path, 'r', encoding='utf-8') as f:
+				data = json.load(f)
+
+			# Check for title field which contains the original filename
+			if 'title' in data and data['title']:
+				original_filename = data['title']
+
+				# Clean up the filename
+				# Remove any invalid characters
+				import re
+				original_filename = re.sub(r'[<>:"/\\|?*]', '_', original_filename)
+
+				# Ensure the filename has an extension
+				if '.' not in original_filename:
+					# Try to get the extension from the JSON filename
+					json_basename = os.path.basename(json_path)
+					if json_basename.endswith('.json'):
+						json_basename = json_basename[:-5]  # Remove .json
+
+					if '.supplemental-metadata' in json_basename:
+						media_filename = json_basename.replace('.supplemental-metadata', '')
+						ext = os.path.splitext(media_filename)[1]
+						if ext:
+							original_filename += ext
+
+					# If we still don't have an extension, try to determine it from the media type
+					if '.' not in original_filename and 'mimeType' in data:
+						mime_type = data['mimeType']
+						if 'image/jpeg' in mime_type:
+							original_filename += '.jpg'
+						elif 'image/png' in mime_type:
+							original_filename += '.png'
+						elif 'image/heic' in mime_type:
+							original_filename += '.heic'
+						elif 'video/mp4' in mime_type:
+							original_filename += '.mp4'
+						elif 'video/quicktime' in mime_type:
+							original_filename += '.mov'
+
+				return original_filename
+
+			return None
+		except Exception as e:
+			logger.error(f"Error recovering original filename from {json_path}: {str(e)}")
+			return None
+
+	@staticmethod
+	def rename_to_original(file_path: str, json_path: str, dry_run: bool = False) -> Optional[str]:
+		"""
+		Rename a file to its original filename based on JSON metadata
+
+		Args:
+			file_path: Path to the file to rename
+			json_path: Path to the JSON metadata file
+			dry_run: If True, don't actually rename the file
+
+		Returns:
+			New file path or None if renaming failed
+		"""
+		if not os.path.exists(file_path):
+			logger.error(f"File not found: {file_path}")
+			return None
+
+		if not os.path.exists(json_path):
+			logger.error(f"JSON file not found: {json_path}")
+			return None
+
+		try:
+			# Get the original filename from the JSON metadata
+			original_filename = MetadataService.recover_original_filename(json_path)
+			if not original_filename:
+				logger.warning(f"Could not recover original filename from {json_path}")
+				return None
+
+			# Get the directory of the file
+			file_dir = os.path.dirname(file_path)
+
+			# Create the new file path
+			new_file_path = os.path.join(file_dir, original_filename)
+
+			# Check if the new file path already exists
+			if os.path.exists(new_file_path) and os.path.samefile(file_path, new_file_path):
+				logger.info(f"File {file_path} already has the correct name")
+				return file_path
+
+			if os.path.exists(new_file_path):
+				# If the file already exists, add a suffix
+				base_name, ext = os.path.splitext(original_filename)
+				counter = 1
+				while os.path.exists(new_file_path):
+					new_file_path = os.path.join(file_dir, f"{base_name} ({counter}){ext}")
+					counter += 1
+
+			# Rename the file
+			if dry_run:
+				logger.info(f"[DRY RUN] Would rename {file_path} to {new_file_path}")
+				return new_file_path
+			else:
+				os.rename(file_path, new_file_path)
+				logger.info(f"Renamed {file_path} to {new_file_path}")
+				return new_file_path
+		except Exception as e:
+			logger.error(f"Error renaming {file_path} to original filename: {str(e)}")
+			return None
+
+	@staticmethod
+	def batch_rename_to_original(pairs: List[Tuple[str, str, PhotoMetadata]], dry_run: bool = False) -> Tuple[int, int]:
+		"""
+		Batch rename files to their original filenames based on JSON metadata
+
+		Args:
+			pairs: List of tuples (json_path, file_path, metadata)
+			dry_run: If True, don't actually rename the files
+
+		Returns:
+			Tuple of (total processed, successful)
+		"""
+		processed = 0
+		successful = 0
+
+		for json_path, file_path, _ in pairs:
+			processed += 1
+
+			# Log progress every 10 files
+			if processed % 10 == 0:
+				logger.info(f"Processed {processed} of {len(pairs)} files, {successful} successful")
+
+			# Rename the file
+			new_file_path = MetadataService.rename_to_original(file_path, json_path, dry_run)
+			if new_file_path:
+				successful += 1
+
+		logger.info(f"Finished renaming {processed} files, {successful} successful")
+		return processed, successful
+
+	@staticmethod
+	def sync_metadata(old_dir: str, new_dir: str, dry_run: bool = False, 
+					 rename_to_original: bool = False) -> Tuple[int, int, int]:
 		"""
 		Synchronize metadata between directories
 
@@ -803,12 +951,29 @@ class MetadataService:
 			old_dir: Directory with Google Takeout files
 			new_dir: Directory with Apple Photos exports
 			dry_run: If True, don't actually modify any files
+			rename_to_original: If True, rename files to their original filenames
 
 		Returns:
 			Tuple of (total pairs found, total processed, successful)
 		"""
 		# Find metadata pairs
 		pairs = MetadataService.find_metadata_pairs(old_dir, new_dir)
+
+		# Rename files to original filenames if requested
+		if rename_to_original:
+			logger.info("Renaming files to their original filenames...")
+			processed, successful = MetadataService.batch_rename_to_original(pairs, dry_run)
+			logger.info(f"Renamed {successful} of {processed} files to their original filenames")
+
+			# Update the pairs with the new file paths
+			updated_pairs = []
+			for json_path, file_path, metadata in pairs:
+				new_file_path = MetadataService.rename_to_original(file_path, json_path, dry_run=True)
+				if new_file_path:
+					updated_pairs.append((json_path, new_file_path, metadata))
+				else:
+					updated_pairs.append((json_path, file_path, metadata))
+			pairs = updated_pairs
 
 		# Convert pairs to (json_path, target_file) format
 		# Handle both 2-element and 3-element tuples
